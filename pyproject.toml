@@ -1,0 +1,17 @@
+[project]
+name = "arcgis-pro-mcp"
+version = "0.1.0"
+description = "MCP server that lets AI assistants (Claude Code, Codex, Gemini CLI) control a live ArcGIS Pro session"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["mcp>=1.2.0"]
+
+[project.scripts]
+arcgis-pro-mcp = "arcgis_pro_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arcgis_pro_mcp"]

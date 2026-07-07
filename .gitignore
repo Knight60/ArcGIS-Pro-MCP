@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+uv.lock
+ArcGISMCP.*.pyt.xml
+*.pyt.xml

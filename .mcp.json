@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "arcgis": {
+      "command": "python",
+      "args": ["-m", "arcgis_pro_mcp"]
+    }
+  }
+}
