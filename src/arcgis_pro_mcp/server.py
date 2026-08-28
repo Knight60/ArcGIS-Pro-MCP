@@ -2,379 +2,297 @@
 
 Exposes MCP tools to AI assistants (Claude Code, Codex, Gemini CLI) and relays
 each call to the MCP bridge running inside ArcGIS Pro over a local TCP socket.
+
+The tools themselves are generated from ``catalog.py`` so that the tool list,
+its documentation and the bridge's handlers stay in step.
 """
 
+from __future__ import annotations
+
+import base64
 import json
-from typing import Any, Optional
+import textwrap
+from typing import Annotated, Any, Optional  # noqa: F401 -- used by generated code
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
+from pydantic import Field  # noqa: F401 -- used by generated code
 
-from .connection import ArcGISProNotAvailable, get_connection
+from .catalog import CATALOG, Tool, groups
+from .connection import ArcGISProNotAvailable, describe_instances, get_connection
 
-mcp = FastMCP(
-    "ArcGIS Pro MCP",
-    instructions=(
-        "Control a live ArcGIS Pro session. ArcGIS Pro must be open with the "
-        "'Start MCP Server' toolbox tool running. Start with get_arcgis_info or "
-        "get_layers to inspect the current state. map_name is optional almost "
-        "everywhere and defaults to the active map."
-    ),
-)
+INSTRUCTIONS = """\
+Control a live ArcGIS Pro session through arcpy.
+
+Setup has two parts, both inside ArcGIS Pro, and neither can be done from
+here -- ask the user if either is missing:
+  1. the bridge ('Start MCP Server' in the ArcGIS MCP toolbox, or auto-start);
+  2. the main-thread dispatcher. ArcGIS Pro only exposes the open project to
+     its own main thread, so the user installs a dispatcher there once per
+     session, with a one-liner in the ArcGIS Pro Python window that returns
+     immediately:
+         import mcp_bridge; mcp_bridge.start_pump()
+     Without it, path-based work (geoprocessing, describe_dataset,
+     list_workspace_contents) still runs, but anything reading or changing the
+     open project fails. get_pump_status and diagnose report this.
+
+Getting oriented: get_project_info and get_layers show what is open;
+search_data and list_workspace_contents find data that is not in a map yet;
+diagnose explains why something is not working.
+
+Conventions: map_name is optional almost everywhere and defaults to the active
+map. Anywhere a layer_name is accepted you may pass either a layer in the map
+or a full dataset path. Layer names must match get_layers exactly (layers
+inside a group use the long name, "Group\\Layer").
+
+Anything not covered by a named tool is still reachable:
+run_geoprocessing_tool runs any of the ~2000 arcpy tools (use
+describe_geoprocessing_tool to learn a tool's parameters first), and
+execute_arcpy_code runs arbitrary Python inside Pro. get_capabilities lists
+every command the connected bridge supports.
+
+Working on real data: these tools edit the user's open project. Prefer
+non-destructive steps, use save_project deliberately, and confirm before bulk
+edits or deletes. export_map_view and preview_layout return images, so the map
+can be checked visually after a change.
+"""
+
+mcp = FastMCP("ArcGIS Pro MCP", instructions=INSTRUCTIONS)
+
+
+# --- transport ---------------------------------------------------------------
+
+def _send(command: str, params: dict) -> dict:
+    """Send one command, returning the decoded bridge response."""
+    params = {k: v for k, v in params.items() if v is not None}
+    return get_connection().send_command(command, params)
 
 
 def _call(command: str, **params: Any) -> str:
     try:
-        response = get_connection().send_command(command, params)
+        response = _send(command, params)
     except ArcGISProNotAvailable as exc:
         return f"Error: {exc}"
-    except Exception as exc:  # noqa: BLE001 — surface transport errors to the agent
+    except Exception as exc:  # noqa: BLE001 -- surface transport errors to the agent
         return f"Error communicating with ArcGIS Pro: {type(exc).__name__}: {exc}"
     if not response.get("success"):
-        return f"ArcGIS Pro error: {response.get('error')}"
+        return _format_error(command, response)
     return json.dumps(response.get("data"), ensure_ascii=False, indent=2, default=str)
 
 
-# --- Session / project ------------------------------------------------------
+def _call_image(command: str, **params: Any) -> Any:
+    """Like _call, but hands back rendered PNG/JPEG output as a real image."""
+    try:
+        response = _send(command, params)
+    except ArcGISProNotAvailable as exc:
+        return f"Error: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return f"Error communicating with ArcGIS Pro: {type(exc).__name__}: {exc}"
+    if not response.get("success"):
+        return _format_error(command, response)
 
-@mcp.tool()
-def ping() -> str:
-    """Check that the ArcGIS Pro bridge is reachable."""
-    return _call("ping")
+    data = dict(response.get("data") or {})
+    encoded = data.pop("image_base64", None)
+    image_format = data.pop("image_format", "png")
+    summary = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+    if not encoded:
+        return summary
+    return [summary, Image(data=base64.b64decode(encoded), format=image_format)]
 
 
-@mcp.tool()
-def get_arcgis_info() -> str:
-    """Get ArcGIS Pro version, license level, and current project path."""
-    return _call("get_arcgis_info")
+def _format_error(command: str, response: dict) -> str:
+    error = response.get("error", "unknown error")
+    message = f"ArcGIS Pro error in {command}: {error}"
+    hint = _hint_for(error)
+    if hint:
+        message += f"\nHint: {hint}"
+    return message
 
 
-@mcp.tool()
-def get_project_info() -> str:
-    """Get current project details: path, default geodatabase, maps, layouts."""
+def _hint_for(error: str) -> Optional[str]:
+    lowered = str(error).lower()
+    if "layer not found" in lowered or "no layer or table" in lowered:
+        return "Call get_layers to see the exact layer names in the map."
+    if "pump" in lowered or "current" in lowered:
+        return ("The main-thread dispatcher is not installed. Ask the user "
+                "to run this once in the ArcGIS Pro Python window (it returns "
+                "immediately):  import mcp_bridge; mcp_bridge.start_pump()")
+    if "unknown command" in lowered:
+        return ("This bridge is older than the MCP server. Run 'Reload MCP "
+                "Handlers' in the ArcGIS MCP toolbox, or restart ArcGIS Pro.")
+    if "no open view" in lowered or "has no view" in lowered:
+        return ("Open the map's tab in ArcGIS Pro (or call activate_map) -- "
+                "camera and export commands need an open view.")
+    if "does not exist" in lowered or "cannot open" in lowered:
+        return "Use search_data or list_workspace_contents to locate the dataset."
+    if "already exists" in lowered:
+        return ("Set overwrite=true on run_geoprocessing_tool, or choose a "
+                "different output name.")
+    if "license" in lowered or "extension" in lowered:
+        return "Check the licence with check_extension before running this tool."
+    return None
+
+
+# --- tool generation ---------------------------------------------------------
+
+TYPE_ANNOTATIONS = {
+    "str": "str",
+    "int": "int",
+    "float": "float",
+    "bool": "bool",
+    "list": "list",
+    "dict": "dict",
+    "list[str]": "list[str]",
+    "list[int]": "list[int]",
+    "list[float]": "list[float]",
+    "list[dict]": "list[dict]",
+}
+
+
+def _annotation(param) -> str:
+    base = TYPE_ANNOTATIONS.get(param.type, "str")
+    if not param.required and param.default is None:
+        base = f"Optional[{base}]"
+    return f"Annotated[{base}, Field(description={param.description!r})]"
+
+
+def _signature(tool: Tool) -> str:
+    ordered = ([p for p in tool.params if p.required]
+               + [p for p in tool.params if not p.required])
+    parts = []
+    for param in ordered:
+        piece = f"{param.name}: {_annotation(param)}"
+        if not param.required:
+            piece += f" = {param.default!r}"
+        parts.append(piece)
+    return ", ".join(parts)
+
+
+def _build_source(tool: Tool) -> str:
+    call = "_call_image" if tool.returns_image else "_call"
+    kwargs = "".join(f", {p.name}={p.name}" for p in tool.params)
+    doc = textwrap.fill(tool.description, 72).replace("\\", "\\\\")
+    body_return = "" if tool.returns_image else " -> str"
+    return (
+        f"def {tool.name}({_signature(tool)}){body_return}:\n"
+        f'    """{doc}"""\n'
+        f'    return {call}("{tool.name}"{kwargs})\n'
+    )
+
+
+def _register_tools() -> int:
+    namespace: dict = {
+        "_call": _call, "_call_image": _call_image,
+        "Optional": Optional, "Annotated": Annotated, "Field": Field,
+        "Any": Any,
+    }
+    source = "\n".join(_build_source(tool) for tool in CATALOG)
+    exec(compile(source, "<arcgis_pro_mcp.generated>", "exec"), namespace)
+    for tool in CATALOG:
+        mcp.add_tool(
+            namespace[tool.name],
+            name=tool.name,
+            description=tool.description,
+        )
+    return len(CATALOG)
+
+
+TOOL_COUNT = _register_tools()
+
+
+# --- resources ---------------------------------------------------------------
+
+@mcp.resource("arcgis://tools")
+def tool_index() -> str:
+    """The full tool list, grouped by area."""
+    lines = [f"# ArcGIS Pro MCP -- {TOOL_COUNT} tools", ""]
+    for group, tools in groups().items():
+        lines.append(f"## {group}")
+        for tool in tools:
+            first_line = tool.description.split(". ")[0].rstrip(".")
+            lines.append(f"- **{tool.name}** -- {first_line}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+@mcp.resource("arcgis://status")
+def status() -> str:
+    """Whether ArcGIS Pro is reachable right now, and which projects are open."""
+    instances = describe_instances()
+    lines = ["# ArcGIS Pro bridge status", ""]
+    if instances:
+        for inst in instances:
+            lines.append(
+                "- {host}:{port} -- {project} (pid {pid})".format(
+                    host=inst.get("host"), port=inst.get("port"),
+                    project=inst.get("project_path") or "unsaved project",
+                    pid=inst.get("pid"))
+            )
+    else:
+        lines.append("- No bridge registered. Open ArcGIS Pro and run "
+                     "'Start MCP Server' from the ArcGIS MCP toolbox.")
+    lines.append("")
+    lines.append(_call("ping"))
+    return "\n".join(lines)
+
+
+@mcp.resource("arcgis://project")
+def project_summary() -> str:
+    """A snapshot of the open project: maps, layers and layouts."""
     return _call("get_project_info")
 
 
-@mcp.tool()
-def list_maps() -> str:
-    """List all maps in the project with spatial reference and layer counts."""
-    return _call("list_maps")
+# --- prompts -----------------------------------------------------------------
 
-
-@mcp.tool()
-def create_map(name: str, map_type: str = "MAP") -> str:
-    """Create a new map in the project. map_type: MAP or SCENE."""
-    return _call("create_map", name=name, map_type=map_type)
-
-
-@mcp.tool()
-def save_project() -> str:
-    """Save the current ArcGIS Pro project (.aprx)."""
-    return _call("save_project")
-
-
-# --- Layers ------------------------------------------------------------------
-
-@mcp.tool()
-def get_layers(map_name: Optional[str] = None) -> str:
-    """List layers and standalone tables in a map (default: active map)."""
-    return _call("get_layers", map_name=map_name)
-
-
-@mcp.tool()
-def add_layer(path: str, map_name: Optional[str] = None) -> str:
-    """Add data to a map by path or URL: feature class, shapefile, raster,
-    .lyrx layer file, or web service URL."""
-    return _call("add_layer", path=path, map_name=map_name)
-
-
-@mcp.tool()
-def remove_layer(layer_name: str, map_name: Optional[str] = None) -> str:
-    """Remove a layer from a map."""
-    return _call("remove_layer", layer_name=layer_name, map_name=map_name)
-
-
-@mcp.tool()
-def set_layer_visibility(
-    layer_name: str, visible: bool, map_name: Optional[str] = None
-) -> str:
-    """Show or hide a layer."""
-    return _call(
-        "set_layer_visibility", layer_name=layer_name, visible=visible, map_name=map_name
+@mcp.prompt()
+def explore_project() -> str:
+    """Survey the open ArcGIS Pro project and summarise what is in it."""
+    return (
+        "Survey the ArcGIS Pro project that is currently open:\n"
+        "1. Call get_project_info, then get_layers.\n"
+        "2. For each data layer, call get_layer_info for the geometry type, "
+        "coordinate system and feature count.\n"
+        "3. Flag anything that looks wrong: broken sources (get_broken_layers), "
+        "mixed coordinate systems, empty layers.\n"
+        "4. Finish with a short summary table and suggest what analysis the "
+        "data supports."
     )
 
 
-@mcp.tool()
-def set_definition_query(
-    layer_name: str, query: str = "", map_name: Optional[str] = None
-) -> str:
-    """Set a layer's definition query (SQL where clause). Empty string clears it."""
-    return _call(
-        "set_definition_query", layer_name=layer_name, query=query, map_name=map_name
+@mcp.prompt()
+def make_map(subject: str, style: str = "clean and print-ready") -> str:
+    """Build a finished, exportable map of a subject."""
+    return (
+        f"Produce a {style} map of: {subject}.\n"
+        "1. get_layers to see what is available; search_data if the data is "
+        "not in the map yet.\n"
+        "2. Symbolise the relevant layers with set_layer_renderer, and label "
+        "them with set_layer_labeling.\n"
+        "3. Set a suitable basemap and zoom with zoom_to_layer or set_map_view.\n"
+        "4. Call export_map_view and actually look at the returned image; "
+        "adjust colours, scale and labels until it reads well.\n"
+        "5. Build a layout: create_layout, add_layout_legend, "
+        "add_layout_scale_bar, add_layout_north_arrow and add_layout_text for "
+        "the title.\n"
+        "6. preview_layout to check it, then export_layout to PDF.\n"
+        "Report each choice you made so it can be adjusted."
     )
 
 
-@mcp.tool()
-def get_layer_info(layer_name: str, map_name: Optional[str] = None) -> str:
-    """Get layer details: source, spatial reference, extent, fields, feature count."""
-    return _call("get_layer_info", layer_name=layer_name, map_name=map_name)
-
-
-@mcp.tool()
-def zoom_to_layer(layer_name: str, map_name: Optional[str] = None) -> str:
-    """Zoom the map view to a layer's extent."""
-    return _call("zoom_to_layer", layer_name=layer_name, map_name=map_name)
-
-
-@mcp.tool()
-def set_basemap(basemap_name: str, map_name: Optional[str] = None) -> str:
-    """Set the basemap, e.g. 'Topographic', 'Imagery', 'Light Gray Canvas',
-    'Dark Gray Canvas', 'Streets', 'Oceans'."""
-    return _call("set_basemap", basemap_name=basemap_name, map_name=map_name)
-
-
-# --- Attribute data ----------------------------------------------------------
-
-@mcp.tool()
-def get_features(
-    layer_name: str,
-    where: Optional[str] = None,
-    fields: Optional[list[str]] = None,
-    limit: int = 50,
-    include_geometry: bool = False,
-    map_name: Optional[str] = None,
-) -> str:
-    """Read features from a layer as attribute rows. Optional SQL where clause
-    and field list. include_geometry adds WKT geometry (can be large)."""
-    return _call(
-        "get_features",
-        layer_name=layer_name,
-        where=where,
-        fields=fields,
-        limit=limit,
-        include_geometry=include_geometry,
-        map_name=map_name,
+@mcp.prompt()
+def analyze(question: str) -> str:
+    """Answer a spatial question with the data in the open project."""
+    return (
+        f"Answer this question using the open ArcGIS Pro project: {question}\n"
+        "1. Inspect the data first (get_layers, get_layer_info, list_fields).\n"
+        "2. Prefer reading tools -- summarize_features, get_field_statistics, "
+        "select_by_location -- before creating new datasets.\n"
+        "3. When geoprocessing is needed, call describe_geoprocessing_tool to "
+        "confirm the parameters, then run_geoprocessing_tool.\n"
+        "4. Write outputs to the project's default geodatabase with clear "
+        "names, and say which ones you created.\n"
+        "5. Give the answer with the numbers that support it, and note any "
+        "assumptions (coordinate system, units, filters)."
     )
-
-
-@mcp.tool()
-def get_unique_values(
-    layer_name: str, field: str, limit: int = 100, map_name: Optional[str] = None
-) -> str:
-    """Get the distinct values of a field."""
-    return _call(
-        "get_unique_values", layer_name=layer_name, field=field, limit=limit,
-        map_name=map_name,
-    )
-
-
-@mcp.tool()
-def get_field_statistics(
-    layer_name: str, field: str, map_name: Optional[str] = None
-) -> str:
-    """Get min/max/mean/sum/std of a numeric field (plus count and null count)."""
-    return _call(
-        "get_field_statistics", layer_name=layer_name, field=field, map_name=map_name
-    )
-
-
-@mcp.tool()
-def select_features(
-    layer_name: str,
-    where: str,
-    method: str = "NEW_SELECTION",
-    map_name: Optional[str] = None,
-) -> str:
-    """Select features by SQL where clause. method: NEW_SELECTION,
-    ADD_TO_SELECTION, REMOVE_FROM_SELECTION, SUBSET_SELECTION."""
-    return _call(
-        "select_features", layer_name=layer_name, where=where, method=method,
-        map_name=map_name,
-    )
-
-
-@mcp.tool()
-def clear_selection(
-    layer_name: Optional[str] = None, map_name: Optional[str] = None
-) -> str:
-    """Clear the selection on one layer, or on all layers if layer_name is omitted."""
-    return _call("clear_selection", layer_name=layer_name, map_name=map_name)
-
-
-# --- Schema / editing ---------------------------------------------------------
-
-@mcp.tool()
-def add_field(
-    layer_name: str,
-    field_name: str,
-    field_type: str = "TEXT",
-    field_length: Optional[int] = None,
-    field_alias: Optional[str] = None,
-    map_name: Optional[str] = None,
-) -> str:
-    """Add a field to a layer. field_type: TEXT, LONG, SHORT, DOUBLE, FLOAT,
-    DATE, GUID, BLOB."""
-    return _call(
-        "add_field",
-        layer_name=layer_name,
-        field_name=field_name,
-        field_type=field_type,
-        field_length=field_length,
-        field_alias=field_alias,
-        map_name=map_name,
-    )
-
-
-@mcp.tool()
-def delete_field(
-    layer_name: str, field_name: str, map_name: Optional[str] = None
-) -> str:
-    """Delete a field from a layer."""
-    return _call(
-        "delete_field", layer_name=layer_name, field_name=field_name, map_name=map_name
-    )
-
-
-@mcp.tool()
-def calculate_field(
-    layer_name: str,
-    field_name: str,
-    expression: str,
-    expression_type: str = "PYTHON3",
-    map_name: Optional[str] = None,
-) -> str:
-    """Calculate field values, e.g. expression "!AREA! / 10000". expression_type:
-    PYTHON3, ARCADE, SQL."""
-    return _call(
-        "calculate_field",
-        layer_name=layer_name,
-        field_name=field_name,
-        expression=expression,
-        expression_type=expression_type,
-        map_name=map_name,
-    )
-
-
-@mcp.tool()
-def create_feature_class(
-    name: str,
-    geometry_type: str = "POLYGON",
-    epsg: Optional[int] = None,
-    out_path: Optional[str] = None,
-    add_to_map: bool = True,
-    map_name: Optional[str] = None,
-) -> str:
-    """Create a new feature class (default: in the project's default geodatabase).
-    geometry_type: POINT, MULTIPOINT, POLYLINE, POLYGON."""
-    return _call(
-        "create_feature_class",
-        name=name,
-        geometry_type=geometry_type,
-        epsg=epsg,
-        out_path=out_path,
-        add_to_map=add_to_map,
-        map_name=map_name,
-    )
-
-
-# --- Geoprocessing ------------------------------------------------------------
-
-@mcp.tool()
-def run_geoprocessing_tool(
-    tool_name: str,
-    parameters: Optional[dict] = None,
-    args: Optional[list] = None,
-) -> str:
-    """Run any arcpy geoprocessing tool. tool_name like "analysis.Buffer" or
-    "Buffer_analysis". Pass keyword parameters in `parameters` (preferred) or
-    positional values in `args`. Layer names in the active map can be used as
-    inputs. Example: tool_name="analysis.Buffer", parameters={"in_features":
-    "roads", "out_feature_class": "roads_buf", "buffer_distance_or_field":
-    "100 Meters"}."""
-    return _call(
-        "run_geoprocessing_tool", tool_name=tool_name, parameters=parameters, args=args
-    )
-
-
-@mcp.tool()
-def list_geoprocessing_tools(wildcard: str = "*") -> str:
-    """List available geoprocessing tools, e.g. wildcard "*_analysis" or "Clip*"."""
-    return _call("list_geoprocessing_tools", wildcard=wildcard)
-
-
-# --- Symbology / layout / export -----------------------------------------------
-
-@mcp.tool()
-def set_layer_renderer(
-    layer_name: str,
-    renderer_type: str = "simple",
-    field: Optional[str] = None,
-    color: Optional[list[int]] = None,
-    outline_color: Optional[list[int]] = None,
-    color_ramp: Optional[str] = None,
-    break_count: int = 5,
-    map_name: Optional[str] = None,
-) -> str:
-    """Change layer symbology. renderer_type: simple (with RGB color like
-    [255, 0, 0]), unique_values (needs field), graduated_colors (needs field;
-    optional color_ramp name like "Viridis" and break_count)."""
-    return _call(
-        "set_layer_renderer",
-        layer_name=layer_name,
-        renderer_type=renderer_type,
-        field=field,
-        color=color,
-        outline_color=outline_color,
-        color_ramp=color_ramp,
-        break_count=break_count,
-        map_name=map_name,
-    )
-
-
-@mcp.tool()
-def list_layouts() -> str:
-    """List print layouts in the project."""
-    return _call("list_layouts")
-
-
-@mcp.tool()
-def export_layout(layout_name: str, output_path: str, dpi: int = 200) -> str:
-    """Export a layout to PDF/PNG/JPEG/SVG (format inferred from the file
-    extension). Relative paths are resolved against the project home folder."""
-    return _call(
-        "export_layout", layout_name=layout_name, output_path=output_path, dpi=dpi
-    )
-
-
-@mcp.tool()
-def export_map_view(
-    output_path: str,
-    width: int = 1200,
-    height: int = 800,
-    map_name: Optional[str] = None,
-) -> str:
-    """Export the map view to a PNG image (useful as a visual check of the map)."""
-    return _call(
-        "export_map_view", output_path=output_path, width=width, height=height,
-        map_name=map_name,
-    )
-
-
-# --- Raster ---------------------------------------------------------------------
-
-@mcp.tool()
-def get_raster_info(layer_name: str, map_name: Optional[str] = None) -> str:
-    """Get raster layer details: bands, size, cell size, pixel type, statistics."""
-    return _call("get_raster_info", layer_name=layer_name, map_name=map_name)
-
-
-# --- Escape hatch -----------------------------------------------------------------
-
-@mcp.tool()
-def execute_arcpy_code(code: str) -> str:
-    """Execute arbitrary Python code inside ArcGIS Pro (arcpy is pre-imported;
-    use arcpy.mp.ArcGISProject('CURRENT') for the open project). Use print()
-    to return output. Use this when no dedicated tool covers the task."""
-    return _call("execute_arcpy_code", code=code)
 
 
 def main() -> None:
