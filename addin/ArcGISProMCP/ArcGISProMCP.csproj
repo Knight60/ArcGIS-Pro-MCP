@@ -75,6 +75,14 @@
   -->
   <ItemGroup>
     <Content Include="Config.daml" />
+    <!--
+      Geoprocessing parameter names and their order, captured from arcpy by
+      scripts/dump_gp_parameters.py. ArcGIS Pro's API runs tools positionally
+      and cannot report parameter names, so this is what lets the add-in take
+      named parameters. Regenerate it when targeting a new ArcGIS Pro release.
+    -->
+    <EmbeddedResource Include="Resources\gp-parameters.json"
+                      Condition="Exists('Resources\gp-parameters.json')" />
   </ItemGroup>
 
   <!--

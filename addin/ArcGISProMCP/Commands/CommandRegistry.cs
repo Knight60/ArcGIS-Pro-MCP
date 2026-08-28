@@ -14,6 +14,10 @@ namespace ArcGISProMCP.Commands
             DataCommands.Register();
             SymbologyCommands.Register();
             LayoutCommands.Register();
+            CatalogCommands.Register();
+            MapCommands.Register();
+            EditCommands.Register();
+            GpWrapperCommands.Register();
             ViewCommands.Register();
             GeoprocessingCommands.Register();
         }
