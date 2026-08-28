@@ -8,3 +8,7 @@ venv/
 uv.lock
 ArcGISMCP.*.pyt.xml
 *.pyt.xml
+
+# C# add-in build output
+addin/**/bin/
+addin/**/obj/

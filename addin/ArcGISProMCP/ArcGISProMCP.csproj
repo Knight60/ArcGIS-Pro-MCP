@@ -4,7 +4,7 @@
     ArcGIS Pro MCP add-in.
 
     Assemblies are referenced straight out of the ArcGIS Pro installation, so
-    the only thing this needs beyond Pro itself is the .NET 8 SDK -- no NuGet
+    the only thing this needs beyond Pro itself is the .NET 8 SDK: no NuGet
     feed and no Visual Studio extension.
 
     Packaging is left to Esri's own targets file, which ships with Pro: it
@@ -77,12 +77,61 @@
     <Content Include="Config.daml" />
   </ItemGroup>
 
-  <Import Project="$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets"
-          Condition="Exists('$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets')" />
+  <!--
+    Packaging.
 
-  <Target Name="WarnIfNoSdkTargets" BeforeTargets="Build"
-          Condition="!Exists('$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets')">
-    <Warning Text="Esri.ProApp.SDK.Desktop.targets was not found under $(ArcGISProBin). The project still compiles, but no .esriAddinX will be produced. Install the ArcGIS Pro SDK for .NET, or pass -p:ArcGISProDir=..." />
+    Esri ships Esri.ProApp.SDK.Desktop.targets with ArcGIS Pro, but it builds
+    its tasks with CodeTaskFactory, which only the .NET Framework MSBuild that
+    comes with Visual Studio supports; `dotnet build` fails on it. The layout
+    it produces is simple enough to reproduce here, so the add-in builds the
+    same way from either MSBuild:
+
+      <name>.esriAddinX
+        Config.daml          at the root
+        Install\<name>.dll    the assemblies
+
+    RegisterAddIn.exe then installs it for the current user, which is what
+    makes the add-in available the next time ArcGIS Pro starts.
+  -->
+  <Target Name="PackageAddIn" AfterTargets="Build">
+    <PropertyGroup>
+      <AddInStage>$(IntermediateOutputPath)addin-stage\</AddInStage>
+      <AddInFile>$(OutputPath)$(AssemblyName).esriAddinX</AddInFile>
+    </PropertyGroup>
+
+    <RemoveDir Directories="$(AddInStage)" />
+    <MakeDir Directories="$(AddInStage)Install" />
+
+    <Copy SourceFiles="Config.daml" DestinationFolder="$(AddInStage)" />
+    <ItemGroup>
+      <AddInBinaries Include="$(OutputPath)$(AssemblyName).dll" />
+      <!-- The dll and its symbols only: a deps.json here makes Pro's loader
+           try to resolve dependencies it already provides. -->
+      <AddInBinaries Include="$(OutputPath)$(AssemblyName).pdb" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AddInBinaries)" DestinationFolder="$(AddInStage)Install" />
+
+    <Delete Files="$(AddInFile)" />
+    <ZipDirectory SourceDirectory="$(AddInStage)" DestinationFile="$(AddInFile)" />
+    <Message Importance="high" Text="Add-in packaged: $(AddInFile)" />
+
+    <!--
+      Deploy by dropping the package in the folder ArcGIS Pro scans at
+      startup. RegisterAddIn.exe does the same job but returns nothing useful
+      when it fails, and this is easy to verify.
+    -->
+    <PropertyGroup>
+      <!--
+        The real Documents folder, not %USERPROFILE%\Documents: it is often
+        redirected (OneDrive), and ArcGIS Pro only scans the redirected one.
+      -->
+      <AddInDeployFolder Condition="'$(AddInDeployFolder)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.MyDocuments))\ArcGIS\AddIns\ArcGISPro</AddInDeployFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(AddInDeployFolder)" Condition="'$(DeployAddIn)' != 'false'" />
+    <Copy SourceFiles="$(AddInFile)" DestinationFolder="$(AddInDeployFolder)"
+          Condition="'$(DeployAddIn)' != 'false'" />
+    <Message Importance="high" Condition="'$(DeployAddIn)' != 'false'"
+             Text="Deployed to $(AddInDeployFolder). Restart ArcGIS Pro to load it." />
   </Target>
 
 </Project>

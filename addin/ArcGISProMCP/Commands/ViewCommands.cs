@@ -129,9 +129,9 @@ namespace ArcGISProMCP.Commands
                 OutputFileName = outputPath,
             };
 
-            if (!view.CanExport(format))
+            if (!format.ValidateOutputFilePath())
                 throw new InvalidOperationException(
-                    "ArcGIS Pro cannot export this view right now -- it may still be drawing.");
+                    $"ArcGIS Pro will not write to that path: {outputPath}");
             view.Export(format);
 
             var result = new Dictionary<string, object>
