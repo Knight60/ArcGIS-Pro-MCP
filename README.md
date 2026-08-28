@@ -247,7 +247,7 @@ args = ["-m", "arcgis_pro_mcp"]
 
 <!-- TOOLS:START -->
 
-รวม **110 tools** — และทุกอย่างที่เหลือเข้าถึงได้ผ่าน `run_geoprocessing_tool` / `execute_arcpy_code`
+รวม **112 tools** — และทุกอย่างที่เหลือเข้าถึงได้ผ่าน `run_geoprocessing_tool` / `execute_arcpy_code`
 
 ### Session / โปรเจกต์ (14)
 
@@ -292,7 +292,7 @@ args = ["-m", "arcgis_pro_mcp"]
 | `add_join` | Join a table to a layer on a common field |
 | `remove_join` | Remove a join from a layer |
 
-### ข้อมูล attribute และการแก้ไข (9)
+### ข้อมูล attribute และการแก้ไข (11)
 
 | Tool | หน้าที่ |
 |---|---|
@@ -304,6 +304,8 @@ args = ["-m", "arcgis_pro_mcp"]
 | `insert_features` | Insert new rows into a layer or table |
 | `update_features` ⚠️ | Update attributes and/or geometry of rows matching a where clause |
 | `delete_features` ⚠️ | Delete rows matching a where clause |
+| `save_edits` | Commit pending edits |
+| `discard_edits` | Throw away pending edits |
 | `calculate_field` | Calculate field values across a layer, e.g |
 
 ### Selection (6)

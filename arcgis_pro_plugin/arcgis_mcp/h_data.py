@@ -331,3 +331,22 @@ def calculate_field(params):
     return {"layer": target_name(target),
             "calculated_field": params["field_name"],
             "messages": result.getMessages()}
+
+
+@command("save_edits", GROUP)
+def save_edits(params):
+    """Commit pending edits.
+
+    arcpy commits as each edit session closes, so there is normally nothing
+    pending here; the command exists so the same call works against either
+    implementation.
+    """
+    return {"saved": False,
+            "message": "arcpy commits edits as it makes them; nothing was pending."}
+
+
+@command("discard_edits", GROUP)
+def discard_edits(params):
+    """Throw away pending edits (arcpy has already committed them)."""
+    return {"discarded": False,
+            "message": "arcpy commits edits as it makes them; nothing to discard."}

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Mapping;
 using ArcGISProMCP.Bridge;
@@ -30,6 +31,12 @@ namespace ArcGISProMCP.Commands
                 "Delete rows matching a where clause.", DeleteFeatures);
             CommandRouter.Register("list_fields", "schema",
                 "List a layer's fields with type, alias and length.", ListFields);
+            CommandRouter.Register("save_edits", Group,
+                "Commit pending edits. ArcGIS Pro holds edits open so they can be "
+                + "undone, which also keeps the data locked until they are saved.",
+                SaveEdits);
+            CommandRouter.Register("discard_edits", Group,
+                "Throw away pending edits.", DiscardEdits);
         }
 
         private static BasicFeatureLayer Layer(Params parameters)
@@ -111,10 +118,12 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The insert failed: {operation.ErrorMessage}");
 
+            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
                 ["inserted"] = features.Count,
+                ["edits_saved"] = parameters.GetBool("save_edits"),
             };
         }
 
@@ -186,11 +195,13 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The update failed: {operation.ErrorMessage}");
 
+            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
                 ["updated"] = oids.Count,
                 ["where"] = where,
+                ["edits_saved"] = parameters.GetBool("save_edits"),
             };
         }
 
@@ -216,12 +227,53 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The delete failed: {operation.ErrorMessage}");
 
+            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
                 ["deleted"] = oids.Count,
                 ["where"] = where,
+                ["edits_saved"] = parameters.GetBool("save_edits"),
             };
+        }
+
+        /// <summary>
+        /// Pro keeps edits pending so the user can undo them, but a dataset
+        /// with pending edits is locked -- deleting or overwriting it fails
+        /// until they are saved or discarded.
+        /// </summary>
+        private static object SaveEdits(Params parameters)
+        {
+            var project = MapHelpers.RequireProject();
+            var had = project.HasEdits;
+            if (had) project.SaveEditsAsync().Wait();
+            return new Dictionary<string, object>
+            {
+                ["saved"] = had,
+                ["message"] = had ? "Pending edits committed."
+                                  : "There were no pending edits.",
+            };
+        }
+
+        private static object DiscardEdits(Params parameters)
+        {
+            var project = MapHelpers.RequireProject();
+            var had = project.HasEdits;
+            if (had) project.DiscardEditsAsync().Wait();
+            return new Dictionary<string, object>
+            {
+                ["discarded"] = had,
+                ["message"] = had ? "Pending edits discarded."
+                                  : "There were no pending edits.",
+            };
+        }
+
+        /// <summary>Commit straight away when the caller asked for it.</summary>
+        private static void MaybeSave(Params parameters)
+        {
+            if (!parameters.GetBool("save_edits")) return;
+            var project = Project.Current;
+            if (project != null && project.HasEdits) project.SaveEditsAsync().Wait();
         }
 
         private static object ListFields(Params parameters)

@@ -294,6 +294,8 @@ CATALOG: List[Tool] = [
         "WKID of the supplied geometry; defaults to the layer's."),
       P("use_edit_session", "bool", True,
         "Wrap in an edit session (needed for enterprise/versioned data)."),
+      P("save_edits", "bool", False,
+        "Commit the edits immediately instead of leaving them pending."),
       MAP_NAME),
 
     T("update_features", "Data",
@@ -308,6 +310,8 @@ CATALOG: List[Tool] = [
         "Required confirmation when no where clause is given."),
       P("geometry_spatial_reference", "int", None, "WKID of the geometry."),
       P("use_edit_session", "bool", True, "Wrap in an edit session."),
+      P("save_edits", "bool", False,
+        "Commit the edits immediately instead of leaving them pending."),
       MAP_NAME, destructive=True),
 
     T("delete_features", "Data",
@@ -317,7 +321,17 @@ CATALOG: List[Tool] = [
       P("allow_delete_all", "bool", False,
         "Required confirmation when no where clause is given."),
       P("use_edit_session", "bool", True, "Wrap in an edit session."),
+      P("save_edits", "bool", False,
+        "Commit the edits immediately instead of leaving them pending."),
       MAP_NAME, destructive=True),
+
+    T("save_edits", "Data",
+      "Commit pending edits. ArcGIS Pro keeps edits open so they can be undone, "
+      "which also leaves the data locked until they are saved -- deleting or "
+      "overwriting an edited dataset fails until then."),
+
+    T("discard_edits", "Data",
+      "Throw away pending edits."),
 
     T("calculate_field", "Data",
       "Calculate field values across a layer, e.g. expression \"!Shape_Area! "
