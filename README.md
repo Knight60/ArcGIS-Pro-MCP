@@ -91,7 +91,23 @@ message ครบแค่ไหน ทางแก้จึงต้องเ�
 
 ## ติดตั้ง
 
-### วิธีเร็วที่สุด
+### เร็วที่สุด: C# add-in + MCP over HTTP
+
+ถ้าใช้ [add-in](addin/) (แนะนำ — เร็วกว่าฝั่ง Python ~3,000 เท่า และไม่ต้องสั่งอะไร
+ตอนเปิด Pro):
+
+```powershell
+dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj -c Release
+claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp
+```
+
+restart ArcGIS Pro แล้วใช้ได้เลย ไม่ต้องมี Python สำหรับงานหลัก
+รายละเอียดใน [addin/README.md](addin/README.md)
+
+ส่วนที่เหลือของหน้านี้เป็นทางฝั่ง Python ซึ่งยังใช้ได้และจำเป็นถ้าต้องการ
+`execute_arcpy_code`
+
+### วิธีเร็วที่สุด (ฝั่ง Python)
 
 ```powershell
 .\install.ps1

@@ -19,6 +19,9 @@ namespace ArcGISProMCP
 
         public BridgeServer Server { get; } = new BridgeServer();
 
+        /// <summary>MCP straight over HTTP, so no separate server process is needed.</summary>
+        public McpHttpServer Mcp { get; } = new McpHttpServer();
+
         /// <summary>Set when startup failed, so the Status button can explain.</summary>
         public string StartupError { get; private set; }
 
@@ -71,17 +74,29 @@ namespace ArcGISProMCP
                 Log(StartupError);
             }
 
+            try
+            {
+                Log(Mcp.Start());
+            }
+            catch (Exception exception)
+            {
+                // The TCP bridge still works without this, so it is not fatal.
+                Log($"Could not start MCP over HTTP: {exception.Message}");
+            }
+
             return true;
         }
 
         protected override void Uninitialize()
         {
+            try { Log(Mcp.Stop()); } catch { /* shutting down */ }
             try { Log(Server.Stop()); } catch { /* shutting down */ }
             base.Uninitialize();
         }
 
         protected override bool CanUnload()
         {
+            Mcp.Stop();
             Server.Stop();
             return true;
         }

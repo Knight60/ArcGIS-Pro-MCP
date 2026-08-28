@@ -83,6 +83,13 @@
     -->
     <EmbeddedResource Include="Resources\gp-parameters.json"
                       Condition="Exists('Resources\gp-parameters.json')" />
+    <!--
+      MCP tool schemas, exported from catalog.py by
+      scripts/export_tool_schemas.py so the add-in serves the same tools the
+      Python server does rather than defining them a second time.
+    -->
+    <EmbeddedResource Include="Resources\tools.json"
+                      Condition="Exists('Resources\tools.json')" />
   </ItemGroup>
 
   <!--

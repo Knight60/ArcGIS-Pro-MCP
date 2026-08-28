@@ -16,11 +16,16 @@
 
 .PARAMETER TimeoutSeconds
     How long to wait for the bridge after the restart.
+
+.PARAMETER CloseTimeoutSeconds
+    How long to give ArcGIS Pro to shut down. It can take minutes on a large
+    project; the window title says "Shutting down..." while it is working.
 #>
 [CmdletBinding()]
 param(
     [string]$Project,
-    [int]$TimeoutSeconds = 180
+    [int]$TimeoutSeconds = 180,
+    [int]$CloseTimeoutSeconds = 240
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,14 +59,48 @@ if ($Project) {
 
 $pro = Get-Pro
 if ($pro) {
+    # Save through the bridge first. Otherwise Pro asks about unsaved changes
+    # on the way out, and a prompt nobody answers stops the whole restart.
+    if (Test-Bridge) {
+        Write-Host "Saving through the bridge before closing..."
+        foreach ($command in @("save_edits", "save_project")) {
+            try {
+                $client = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 6510)
+                $stream = $client.GetStream()
+                $payload = [Text.Encoding]::UTF8.GetBytes(
+                    "{`"id`":1,`"command`":`"$command`",`"params`":{}}`n")
+                $stream.Write($payload, 0, $payload.Length)
+                $stream.Flush()
+                $client.ReceiveTimeout = 120000
+                $buffer = New-Object byte[] 4096
+                [void]$stream.Read($buffer, 0, $buffer.Length)
+                $client.Close()
+                Write-Host "  $command done"
+            } catch {
+                Write-Host "  $command skipped: $($_.Exception.Message)"
+            }
+        }
+    }
+
     Write-Host "Closing ArcGIS Pro (pid $($pro.Id))..."
     $null = $pro.CloseMainWindow()
+    # Pro's own shutdown can take a couple of minutes on a large project, and
+    # it reports progress in the window title -- worth reading before deciding
+    # something has gone wrong.
     $waited = 0
-    while ((Get-Pro) -and $waited -lt 60) { Start-Sleep -Seconds 2; $waited += 2 }
+    while ((Get-Pro) -and $waited -lt $CloseTimeoutSeconds) {
+        Start-Sleep -Seconds 2
+        $waited += 2
+    }
 
     if (Get-Pro) {
-        Write-Host "ArcGIS Pro is still running after ${waited}s."
-        Write-Host "It is probably showing a prompt (unsaved changes). Answer it, then re-run."
+        $title = (Get-Pro).MainWindowTitle
+        Write-Host "ArcGIS Pro is still running after ${waited}s (window: '$title')."
+        if ($title -like "*hutting down*") {
+            Write-Host "It is still shutting down. Re-run in a moment, or raise -CloseTimeoutSeconds."
+        } else {
+            Write-Host "It is probably showing a prompt (unsaved changes). Answer it, then re-run."
+        }
         exit 2
     }
     Write-Host "Closed after ${waited}s."

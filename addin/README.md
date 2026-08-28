@@ -19,18 +19,48 @@ Add-in ที่รันในโปรเซสของ ArcGIS Pro เอง 
 add-in ไม่มีปัญหานี้เพราะใช้ `QueuedTask.Run` ส่งงานเข้า **Main CIM Thread**
 ซึ่ง Pro ให้บริการต่อเนื่องอยู่แล้ว
 
+## วิธีติดตั้งที่สั้นที่สุด (MCP over HTTP)
+
+add-in พูด MCP ได้เองผ่าน HTTP **ไม่ต้องมีโปรเซส Python เลย**
+
+```powershell
+claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp
+```
+
+เท่านี้จบ — ดับเบิลคลิก `.esriAddinX` ครั้งเดียว + คำสั่งข้างบนอีกครั้งเดียว
+
+ทำได้เพราะ transport ต่างกัน:
+
+| Transport | client ทำอะไร | ใช้กับ add-in ได้ไหม |
+|---|---|---|
+| stdio | **spawn โปรเซส** ใหม่แล้วคุยผ่าน stdin/stdout | ❌ add-in อยู่ในโปรเซส Pro ที่รันอยู่แล้ว |
+| HTTP | ต่อไปที่ **URL** | ✅ add-in เปิด endpoint เองได้ |
+
+tool schema ทั้ง 112 ตัวมาจาก [catalog.py](../src/arcgis_pro_mcp/catalog.py) ไฟล์เดียวกับที่ฝั่ง
+Python ใช้ — export ด้วย `scripts/export_tool_schemas.py` แล้วฝังเป็น embedded
+resource จึงไม่มีนิยาม tool ซ้ำสองที่
+
+endpoint bind เฉพาะ `127.0.0.1` เพราะมันเปิดโปรเจกต์ที่ผู้ใช้เปิดอยู่ให้เข้าถึงได้
+
+### ยังใช้ทาง Python ได้เหมือนเดิม
+
+`arcgis-pro-mcp` (stdio) ยังคุยกับ add-in ผ่าน TCP 6510 ได้ตามปกติ ทั้งสองทาง
+เปิดพร้อมกันได้
+
 ## สถาปัตยกรรม
 
 ```
-AI client ──MCP──► arcgis-pro-mcp (Python, ไม่ต้องแก้)
-                        │ JSON over TCP :6510
-                        ▼
-              ┌─ C# Add-in (ในโปรเซส Pro) ─────────────┐
-              │  socket thread → QueuedTask.Run (MCT)  │
-              │  คำสั่งที่ไม่รู้จัก ─┐                  │
-              └────────────────────┼───────────────────┘
-                                   ▼ :6511
-                        Python bridge (arcpy escape hatch)
+AI client ──MCP over HTTP :6520/mcp ─┐
+                                     │
+AI client ──MCP stdio──► arcgis-pro-mcp ──TCP :6510──┐
+                                     │               │
+                                     ▼               ▼
+              ┌─ C# Add-in (ในโปรเซส ArcGIS Pro) ─────────┐
+              │   → QueuedTask.Run (Main CIM Thread)      │
+              │   คำสั่งที่ไม่รู้จัก ─┐                    │
+              └──────────────────────┼───────────────────┘
+                                     ▼ :6511
+                        Python bridge (execute_arcpy_code)
 ```
 
 **protocol เหมือนเดิมทุกอย่าง** — newline-delimited JSON เดิม ฝั่ง MCP server,
@@ -85,14 +115,12 @@ addin/ArcGISProMCP/
 
 ## สถานะ
 
-ยังไม่เคย build (เครื่องพัฒนายังไม่มี .NET 8 SDK) — โค้ดนี้ยังไม่ผ่าน compiler
-สักครั้ง คาดว่าต้องมีรอบแก้ compile error ก่อนใช้งานได้จริง
+ทดสอบกับ ArcGIS Pro 3.5.2 จริงแล้ว — **90 คำสั่งอยู่ใน add-in**, latency 9ms
+(เทียบกับ ~28 วินาทีของฝั่ง Python)
 
-คำสั่งที่ทำใน C# แล้ว: session/project/maps, layers, data read + summarize,
-selection, view + export image, geoprocessing (แบบ positional args)
+เหลือที่ Python fallback ตัวเดียว: **`execute_arcpy_code`** ซึ่งตั้งใจให้อยู่
+ตรงนั้นถาวร เพราะ add-in ที่ compile แล้วรันโค้ดที่แต่งขึ้นตอนนั้นไม่ได้
 
-ที่เหลือยังวิ่งผ่าน Python fallback: symbology, labels, layouts, bookmarks,
-raster, schema, editing, catalog และ `execute_arcpy_code`
-
-`run_geoprocessing_tool` แบบ named parameters ยังส่งต่อไป Python เพราะ Pro SDK
-รับเฉพาะ positional — ต้องหาวิธี resolve ลำดับ parameter จาก metadata ก่อน
+`run_geoprocessing_tool` รับ named parameters ได้แล้ว โดยใช้ตารางลำดับ
+parameter ของ 1,941 tool ที่ดึงจาก arcpy (`scripts/dump_gp_parameters.py`)
+แล้วฝังไว้ — Pro SDK เองไม่มี API บอกชื่อ parameter ของ tool
