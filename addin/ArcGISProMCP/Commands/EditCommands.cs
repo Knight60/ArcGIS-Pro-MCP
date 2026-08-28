@@ -278,22 +278,19 @@ namespace ArcGISProMCP.Commands
 
         private static object ListFields(Params parameters)
         {
-            var layer = Layer(parameters);
+            using var source = DataSource.Resolve(parameters);
             var wildcard = parameters.GetString("wildcard")?.Trim('*');
-            using (var table = layer.GetTable())
-            {
-                var fields = table.GetDefinition().GetFields()
-                    .Where(field => string.IsNullOrEmpty(wildcard)
-                                    || field.Name.IndexOf(
-                                        wildcard, StringComparison.OrdinalIgnoreCase) >= 0)
-                    .Select(MapHelpers.Describe).ToList();
+            var fields = source.Definition.GetFields()
+                .Where(field => string.IsNullOrEmpty(wildcard)
+                                || field.Name.IndexOf(
+                                    wildcard, StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(MapHelpers.Describe).ToList();
 
-                return new Dictionary<string, object>
-                {
-                    ["layer"] = layer.Name,
-                    ["fields"] = fields,
-                };
-            }
+            return new Dictionary<string, object>
+            {
+                ["layer"] = source.Name,
+                ["fields"] = fields,
+            };
         }
     }
 }

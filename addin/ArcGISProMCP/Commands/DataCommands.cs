@@ -44,11 +44,11 @@ namespace ArcGISProMCP.Commands
 
         // --- shared plumbing -------------------------------------------------
 
-        private static BasicFeatureLayer Layer(Params parameters, out Map map)
-        {
-            map = MapHelpers.ResolveMap(parameters);
-            return MapHelpers.RequireFeatureLayer(map, parameters.Require("layer_name"));
-        }
+        /// <summary>
+        /// What to read from: a layer, a standalone table, or a dataset path.
+        /// The caller disposes it.
+        /// </summary>
+        private static DataSource Source(Params parameters) => DataSource.Resolve(parameters);
 
         private static QueryFilter BuildFilter(Params parameters, IEnumerable<string> subFields = null)
         {
@@ -118,29 +118,26 @@ namespace ArcGISProMCP.Commands
         }
 
         /// <summary>Field names worth returning: everything but geometry and blobs.</summary>
-        private static List<string> ReadableFields(BasicFeatureLayer layer)
+        private static List<string> ReadableFields(DataSource source)
         {
-            using (var table = layer.GetTable())
-            {
-                return table.GetDefinition().GetFields()
-                    .Where(f => f.FieldType != FieldType.Geometry
-                                && f.FieldType != FieldType.Blob
-                                && f.FieldType != FieldType.Raster)
-                    .Select(f => f.Name)
-                    .ToList();
-            }
+            return source.Definition.GetFields()
+                .Where(f => f.FieldType != FieldType.Geometry
+                            && f.FieldType != FieldType.Blob
+                            && f.FieldType != FieldType.Raster)
+                .Select(f => f.Name)
+                .ToList();
         }
 
         // --- reading ---------------------------------------------------------
 
         private static object GetFeatures(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            using var source = Source(parameters);
             var limit = Math.Min(parameters.GetInt("limit", 50), MaxRows);
             var offset = Math.Max(parameters.GetInt("offset"), 0);
             var includeGeometry = parameters.GetBool("include_geometry");
 
-            var fields = parameters.GetStringList("fields") ?? ReadableFields(layer);
+            var fields = parameters.GetStringList("fields") ?? ReadableFields(source);
             var filter = BuildFilter(parameters, includeGeometry ? null : fields);
 
             var orderBy = ParseOrderBy(parameters.GetString("order_by"));
@@ -152,7 +149,7 @@ namespace ArcGISProMCP.Commands
             var rows = new List<Dictionary<string, object>>();
             var truncated = false;
 
-            using (var cursor = layer.Search(filter))
+            using (var cursor = source.Search(filter))
             {
                 while (cursor.MoveNext())
                 {
@@ -181,7 +178,7 @@ namespace ArcGISProMCP.Commands
 
             var result = new Dictionary<string, object>
             {
-                ["layer"] = layer.Name,
+                ["layer"] = source.Name,
                 ["fields"] = fields,
                 ["count"] = page.Count,
                 ["offset"] = offset,
@@ -203,14 +200,14 @@ namespace ArcGISProMCP.Commands
 
         private static object CountFeatures(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            using var source = Source(parameters);
             var where = parameters.GetString("where");
 
-            // Always count through the layer: GetTable().GetCount() reports the
-            // whole source and ignores the layer's definition query, which is
-            // not what anyone asking a layer for its count means.
+            // Always count through the source's own Search: a table's GetCount
+            // reports every row and ignores the layer's definition query,
+            // which is not what anyone asking a layer for its count means.
             long count = 0;
-            using (var cursor = layer.Search(BuildFilter(parameters)))
+            using (var cursor = source.Search(BuildFilter(parameters)))
             {
                 while (cursor.MoveNext())
                 {
@@ -220,7 +217,7 @@ namespace ArcGISProMCP.Commands
 
             return new Dictionary<string, object>
             {
-                ["layer"] = layer.Name,
+                ["layer"] = source.Name,
                 ["where"] = where,
                 ["count"] = count,
             };
@@ -228,14 +225,14 @@ namespace ArcGISProMCP.Commands
 
         private static object GetUniqueValues(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            using var source = Source(parameters);
             var field = parameters.Require("field");
             var limit = Math.Min(parameters.GetInt("limit", 200), MaxRows);
 
             var counts = new Dictionary<string, long>();
             var values = new Dictionary<string, object>();
 
-            using (var cursor = layer.Search(BuildFilter(parameters, new[] { field })))
+            using (var cursor = source.Search(BuildFilter(parameters, new[] { field })))
             {
                 while (cursor.MoveNext())
                 {
@@ -261,7 +258,7 @@ namespace ArcGISProMCP.Commands
 
             return new Dictionary<string, object>
             {
-                ["layer"] = layer.Name,
+                ["layer"] = source.Name,
                 ["field"] = field,
                 ["distinct_count"] = counts.Count,
                 ["values"] = ordered,
@@ -271,13 +268,13 @@ namespace ArcGISProMCP.Commands
 
         private static object GetFieldStatistics(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            using var source = Source(parameters);
             var field = parameters.Require("field");
 
             var numbers = new List<double>();
             long nulls = 0, total = 0;
 
-            using (var cursor = layer.Search(BuildFilter(parameters, new[] { field })))
+            using (var cursor = source.Search(BuildFilter(parameters, new[] { field })))
             {
                 while (cursor.MoveNext())
                 {
@@ -297,7 +294,7 @@ namespace ArcGISProMCP.Commands
 
             var statistics = new Dictionary<string, object>
             {
-                ["layer"] = layer.Name,
+                ["layer"] = source.Name,
                 ["field"] = field,
                 ["count"] = total,
                 ["null_count"] = nulls,
@@ -323,7 +320,7 @@ namespace ArcGISProMCP.Commands
 
         private static object Summarize(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            using var source = Source(parameters);
             var groupBy = parameters.GetStringList("group_by");
             if (groupBy == null || groupBy.Count == 0)
                 throw new ArgumentException("group_by is required.");
@@ -335,7 +332,7 @@ namespace ArcGISProMCP.Commands
 
             var buckets = new Dictionary<string, (List<object> Key, long Count, List<double> Values)>();
 
-            using (var cursor = layer.Search(BuildFilter(parameters, subFields)))
+            using (var cursor = source.Search(BuildFilter(parameters, subFields)))
             {
                 while (cursor.MoveNext())
                 {
@@ -384,7 +381,7 @@ namespace ArcGISProMCP.Commands
 
             return new Dictionary<string, object>
             {
-                ["layer"] = layer.Name,
+                ["layer"] = source.Name,
                 ["group_by"] = groupBy,
                 ["value_field"] = valueField,
                 ["group_count"] = groups.Count,
@@ -407,9 +404,16 @@ namespace ArcGISProMCP.Commands
             }
         }
 
+        /// <summary>A selection lives on a map layer, so these need one.</summary>
+        private static BasicFeatureLayer SelectableLayer(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            return MapHelpers.RequireFeatureLayer(map, parameters.Require("layer_name"));
+        }
+
         private static object SelectFeatures(Params parameters)
         {
-            var layer = Layer(parameters, out _);
+            var layer = SelectableLayer(parameters);
             var method = parameters.GetString("method", "NEW_SELECTION");
             var filter = new QueryFilter { WhereClause = parameters.Require("where") };
 
