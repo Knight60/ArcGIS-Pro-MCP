@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ArcGIS defaultAssembly="ArcGISProMCP.dll"
+        defaultNamespace="ArcGISProMCP"
+        xmlns="http://schemas.esri.com/DADF/Registry"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://schemas.esri.com/DADF/Registry Registry.xsd">
+
+  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.1.0" desktopVersion="3.5">
+    <Name>ArcGIS Pro MCP</Name>
+    <Description>Lets AI assistants drive this ArcGIS Pro session over the Model Context Protocol.</Description>
+    <Author>ArcGIS Pro MCP</Author>
+    <Company>ArcGIS Pro MCP</Company>
+    <Date>08/28/2026</Date>
+    <Subject>Framework</Subject>
+  </AddInInfo>
+
+  <modules>
+    <!-- autoLoad: the bridge has to be listening without anyone clicking. -->
+    <insertModule id="ArcGISProMCP_Module"
+                  className="MCPModule"
+                  autoLoad="true"
+                  caption="ArcGIS Pro MCP">
+
+      <tabs>
+        <tab id="ArcGISProMCP_Tab" caption="MCP">
+          <group refID="ArcGISProMCP_Group" />
+        </tab>
+      </tabs>
+
+      <groups>
+        <group id="ArcGISProMCP_Group" caption="AI bridge" appearsOnAddInTab="true">
+          <button refID="ArcGISProMCP_StartButton" size="large" />
+          <button refID="ArcGISProMCP_StopButton" size="large" />
+          <button refID="ArcGISProMCP_StatusButton" size="large" />
+        </group>
+      </groups>
+
+      <controls>
+        <button id="ArcGISProMCP_StartButton"
+                caption="Start bridge"
+                className="UI.StartServerButton"
+                loadOnClick="false"
+                keytip="MS">
+          <tooltip heading="Start the MCP bridge">
+            Start listening so AI assistants can control this ArcGIS Pro session.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_StopButton"
+                caption="Stop bridge"
+                className="UI.StopServerButton"
+                loadOnClick="false"
+                keytip="MT">
+          <tooltip heading="Stop the MCP bridge">
+            Stop listening. AI assistants lose access to this session.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_StatusButton"
+                caption="Status"
+                className="UI.StatusButton"
+                loadOnClick="false"
+                keytip="MI">
+          <tooltip heading="Bridge status">
+            Show the port, how many commands have been served, and the last error.<disabledText />
+          </tooltip>
+        </button>
+      </controls>
+
+    </insertModule>
+  </modules>
+
+</ArcGIS>

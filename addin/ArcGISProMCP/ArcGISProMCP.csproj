@@ -1,0 +1,88 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ArcGIS Pro MCP add-in.
+
+    Assemblies are referenced straight out of the ArcGIS Pro installation, so
+    the only thing this needs beyond Pro itself is the .NET 8 SDK -- no NuGet
+    feed and no Visual Studio extension.
+
+    Packaging is left to Esri's own targets file, which ships with Pro: it
+    builds the .esriAddinX with the layout Pro expects and then registers it
+    with RegisterAddIn.exe, so a build installs the add-in ready for the next
+    ArcGIS Pro start.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+
+    <!-- Both are checked against Config.daml by Esri's packaging task. -->
+    <AssemblyName>ArcGISProMCP</AssemblyName>
+    <RootNamespace>ArcGISProMCP</RootNamespace>
+
+    <PackageType>addin</PackageType>
+    <PlatformTarget>x64</PlatformTarget>
+    <Version>0.1.0</Version>
+    <Company>ArcGIS Pro MCP</Company>
+    <Product>ArcGIS Pro MCP</Product>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- Where ArcGIS Pro is installed. Override with -p:ArcGISProDir=... -->
+  <PropertyGroup>
+    <ArcGISProDir Condition="'$(ArcGISProDir)' == ''">$(ProgramW6432)\ArcGIS\Pro</ArcGISProDir>
+    <ArcGISProBin>$(ArcGISProDir)\bin</ArcGISProBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ArcGIS.Core">
+      <HintPath>$(ArcGISProBin)\ArcGIS.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Framework">
+      <HintPath>$(ArcGISProBin)\ArcGIS.Desktop.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Core">
+      <HintPath>$(ArcGISProBin)\Extensions\Core\ArcGIS.Desktop.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Mapping">
+      <HintPath>$(ArcGISProBin)\Extensions\Mapping\ArcGIS.Desktop.Mapping.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Editing">
+      <HintPath>$(ArcGISProBin)\Extensions\Editing\ArcGIS.Desktop.Editing.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Layouts">
+      <HintPath>$(ArcGISProBin)\Extensions\Layout\ArcGIS.Desktop.Layouts.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Catalog">
+      <HintPath>$(ArcGISProBin)\Extensions\Catalog\ArcGIS.Desktop.Catalog.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    Content, not None: Esri's packaging task copies @(Content) into the root
+    of the .esriAddinX, and only when it is not also copied to the output
+    directory. Config.daml must land at the archive root.
+  -->
+  <ItemGroup>
+    <Content Include="Config.daml" />
+  </ItemGroup>
+
+  <Import Project="$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets"
+          Condition="Exists('$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets')" />
+
+  <Target Name="WarnIfNoSdkTargets" BeforeTargets="Build"
+          Condition="!Exists('$(ArcGISProBin)\Esri.ProApp.SDK.Desktop.targets')">
+    <Warning Text="Esri.ProApp.SDK.Desktop.targets was not found under $(ArcGISProBin). The project still compiles, but no .esriAddinX will be produced. Install the ArcGIS Pro SDK for .NET, or pass -p:ArcGISProDir=..." />
+  </Target>
+
+</Project>
