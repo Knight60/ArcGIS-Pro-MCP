@@ -553,6 +553,10 @@ CATALOG: List[Tool] = [
       P("value_colors", "dict", None,
         'Explicit colours per category for unique_values, e.g. '
         '{"Forest": [34, 139, 34]}.'),
+      P("class_colors", "list[list]", None,
+        "Explicit colour per class for graduated symbology, lowest class "
+        "first, e.g. [[244,166,166],[249,220,164],[147,203,163]]. Use it when "
+        "no built-in ramp has the colours you want."),
       P("transparency", "int", None, "Layer transparency 0-100."),
       P("label", "str", None, "Legend label for simple symbology."),
       MAP_NAME),

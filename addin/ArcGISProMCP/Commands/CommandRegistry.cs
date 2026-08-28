@@ -12,6 +12,7 @@ namespace ArcGISProMCP.Commands
             SessionCommands.Register();
             LayerCommands.Register();
             DataCommands.Register();
+            SymbologyCommands.Register();
             ViewCommands.Register();
             GeoprocessingCommands.Register();
         }

@@ -125,6 +125,28 @@ def set_layer_renderer(params):
         )
 
     lyr.symbology = sym
+
+    class_colors = params.get("class_colors")
+    if class_colors and cim_name in ("GraduatedColorsRenderer",
+                                     "GraduatedSymbolsRenderer"):
+        # Committed first, then repainted: the class breaks only exist once
+        # the renderer has been applied.
+        sym = lyr.symbology
+        breaks = sym.renderer.classBreaks
+        for index, brk in enumerate(breaks):
+            color = class_colors[min(index, len(class_colors) - 1)]
+            brk.symbol.color = color_dict(color)
+            if params.get("outline_color"):
+                brk.symbol.outlineColor = color_dict(params["outline_color"])
+            if params.get("outline_width") is not None:
+                brk.symbol.outlineWidth = float(params["outline_width"])
+            brk.symbol = brk.symbol  # some arcpy builds need the write-back
+        lyr.symbology = sym
+        if len(class_colors) < len(breaks):
+            warnings.append(
+                "{} colours for {} classes; the last colour was repeated.".format(
+                    len(class_colors), len(breaks)))
+
     if params.get("transparency") is not None:
         lyr.transparency = int(params["transparency"])
 
