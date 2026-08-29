@@ -16,6 +16,8 @@ not a copy of it.
 
 **112 tools.** 109 run inside ArcGIS Pro itself, in about 9 ms each.
 
+![The MCP tab in ArcGIS Pro, with Thailand's provinces graduated by area](docs/images/mcp-menu.png)
+
 ---
 
 ## Install
@@ -67,15 +69,8 @@ ArcGIS Pro itself: **Project ▸ Add-In Manager ▸ Delete this Add-In**.
 
 ## Connect an AI client
 
-Open the **MCP** tab in ArcGIS Pro and click your assistant:
-
-```text
-┌─ Bridge ─────────┬─ AI clients ────────────────────┬─ About ─┐
-│  ⏹       (( ))   │  ✓        ⊕       ⊕       ⊕      │   ⓘ     │
-│ Stop    Port     │ Claude  Codex Antigravity More   │  Info   │
-│ bridge  6510     │  Code                  clients ˅ │         │
-└──────────────────┴─────────────────────────────────┴─────────┘
-```
+Open the **MCP** tab in ArcGIS Pro and click your assistant — the three most
+used are on the ribbon, the rest are under **More clients**.
 
 | Icon | Meaning |
 |---|---|
@@ -314,7 +309,12 @@ served, which clients are connected, and the last error.
 **No MCP tab after restarting Pro.** Add-in security is the usual cause.
 Run `Install-ArcGISProMCP.cmd`; it will say so and offer the two ways round it.
 The setting itself is in ArcGIS Pro under **Project ▸ Add-In Manager ▸
-Options** — [what each choice means](docs/addin.md#signing-the-add-in).
+Options**:
+
+![ArcGIS Pro Add-In Manager, Options tab, showing the three add-in security settings](docs/images/add-in-manager.png)
+
+The middle setting is the one this add-in is signed for. The bottom one loads
+anything. [What each choice means](docs/addin.md#signing-the-add-in).
 
 **The client shows the server in red.** ArcGIS Pro is closed, or the bridge is
 stopped. Open Pro and check the toggle on the MCP tab shows ⏹ (running).
