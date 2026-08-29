@@ -241,6 +241,12 @@ namespace ArcGISProMCP.UI
                 : $"Click to add the 'arcgis' server to {client.ConfigPath}.";
         }
 
+        /// <summary>
+        /// Both directions ask first, and say which file is about to change.
+        /// These are the user's own editor and assistant configs; a button that
+        /// edited one on a single click -- possibly a misaimed one, since the
+        /// same button does both jobs -- is not a button anyone can trust.
+        /// </summary>
         protected override void OnClick()
         {
             var client = Client;
@@ -248,21 +254,8 @@ namespace ArcGISProMCP.UI
 
             try
             {
-                if (McpClientRegistrar.IsRegistered(client))
-                {
-                    var answer = MessageBox.Show(
-                        $"Remove the 'arcgis' server from {client.Name}?\n\n"
-                        + client.ConfigPath,
-                        "ArcGIS Pro MCP",
-                        System.Windows.MessageBoxButton.YesNo);
-                    if (answer != System.Windows.MessageBoxResult.Yes) return;
-
-                    MessageBox.Show(McpClientRegistrar.Unregister(client), "ArcGIS Pro MCP");
-                }
-                else
-                {
-                    MessageBox.Show(McpClientRegistrar.Register(client), "ArcGIS Pro MCP");
-                }
+                if (McpClientRegistrar.IsRegistered(client)) ConfirmRemove(client);
+                else ConfirmAdd(client);
             }
             catch (Exception exception)
             {
@@ -270,8 +263,93 @@ namespace ArcGISProMCP.UI
             }
             finally
             {
-                // So the tick appears now, not in five seconds.
+                // So the tick changes now, not in five seconds.
                 ClientStates.Invalidate();
+            }
+        }
+
+        private static void ConfirmAdd(McpClient client)
+        {
+            // Asked before the prompt, not after: a client that cannot be
+            // registered should say so rather than confirm and then fail.
+            var how = McpClientRegistrar.DescribeConnection(client);
+            var exists = System.IO.File.Exists(client.ConfigPath);
+
+            // TOML is edited as text -- one section appended -- so nothing else
+            // in the file moves. The JSON files go through a parse and rewrite,
+            // which reflows the whole file and loses comments. Saying "the JSON
+            // is reformatted" about Codex's config.toml was simply untrue.
+            var caveat = !exists ? ""
+                : client.Shape == ConfigShape.Toml
+                    ? "The file is copied to .arcgis-mcp.bak first. One section is "
+                      + "appended; the rest of the file is left exactly as it is.\n\n"
+                    : "The file is copied to .arcgis-mcp.bak first. Rewriting the JSON "
+                      + "reflows the whole file and drops any comments in it.\n\n";
+
+            var question =
+                $"Add the 'arcgis' MCP server to {client.Name}?\n\n"
+                + $"File:  {client.ConfigPath}\n"
+                + (exists ? "" : "       (will be created)\n")
+                + $"How:   {how}\n\n"
+                + caveat
+                + $"No other server in {client.Name}'s configuration is touched.";
+
+            if (MessageBox.Show(question, "ArcGIS Pro MCP",
+                                System.Windows.MessageBoxButton.YesNo)
+                != System.Windows.MessageBoxResult.Yes) return;
+
+            MessageBox.Show(McpClientRegistrar.Register(client), "ArcGIS Pro MCP");
+        }
+
+        private static void ConfirmRemove(McpClient client)
+        {
+            var question =
+                $"Remove the 'arcgis' MCP server from {client.Name}?\n\n"
+                + $"File:  {client.ConfigPath}\n\n"
+                + $"{client.Name} will no longer be able to drive this ArcGIS Pro "
+                + "session. The file is copied to .arcgis-mcp.bak first, and the "
+                + "other servers in it are left alone.";
+
+            if (MessageBox.Show(question, "ArcGIS Pro MCP",
+                                System.Windows.MessageBoxButton.YesNo)
+                != System.Windows.MessageBoxResult.Yes) return;
+
+            MessageBox.Show(McpClientRegistrar.Unregister(client), "ArcGIS Pro MCP");
+        }
+    }
+
+    /// <summary>Opens the project's page in the default browser.</summary>
+    internal class InfoButton : Button
+    {
+        public const string ProjectUrl = "https://github.com/Knight60/ArcGIS-MCP";
+
+        protected override void OnUpdate()
+        {
+            LargeImage = Icons.Get("Info");
+            SmallImage = Icons.Get("Info", 16);
+            TooltipHeading = "About ArcGIS Pro MCP";
+            Tooltip = $"Open {ProjectUrl} in your browser:\n"
+                    + "documentation, the tool list, and where to report a problem.";
+        }
+
+        protected override void OnClick()
+        {
+            try
+            {
+                // UseShellExecute, so Windows opens the URL with whatever the
+                // default browser is. Without it .NET tries to execute the
+                // string as a file and throws.
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = ProjectUrl,
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    $"Could not open a browser: {exception.Message}\n\n{ProjectUrl}",
+                    "ArcGIS Pro MCP");
             }
         }
     }

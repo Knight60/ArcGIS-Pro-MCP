@@ -234,14 +234,32 @@ namespace ArcGISProMCP.Clients
             }
         }
 
+        /// <summary>
+        /// How this client would reach the bridge, in words, so a confirmation
+        /// prompt can say what it is about to write. Throws for the same
+        /// reasons Register would, so the caller finds out before asking the
+        /// user rather than after.
+        /// </summary>
+        public static string DescribeConnection(McpClient client)
+        {
+            if (client.Transport == Transport.Http)
+                return $"connects to {McpClientCatalog.HttpUrl}";
+            return $"launches {RequireLauncher(client)}";
+        }
+
+        private static string RequireLauncher(McpClient client)
+        {
+            return StdioLauncher() ?? throw new InvalidOperationException(
+                $"{client.Name} launches an MCP server rather than connecting to a "
+                + "URL, so it needs the Python relay -- and arcgis-pro-mcp.exe is not "
+                + "installed. Install it with:  pip install arcgis-pro-mcp");
+        }
+
         public static string Register(McpClient client)
         {
-            var launcher = client.Transport == Transport.Stdio ? StdioLauncher() : null;
-            if (client.Transport == Transport.Stdio && launcher == null)
-                throw new InvalidOperationException(
-                    $"{client.Name} launches an MCP server rather than connecting to a "
-                    + "URL, so it needs the Python relay -- and arcgis-pro-mcp.exe is not "
-                    + "installed. Install it with:  pip install arcgis-pro-mcp");
+            var launcher = client.Transport == Transport.Stdio
+                ? RequireLauncher(client)
+                : null;
 
             Directory.CreateDirectory(Path.GetDirectoryName(client.ConfigPath));
             Backup(client.ConfigPath);

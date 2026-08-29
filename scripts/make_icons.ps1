@@ -139,6 +139,22 @@ function Draw-Badge($g, $s, $color, $registered) {
 Save-Icon "ClientLinked" { param($g, $s) Draw-Badge $g $s $green $true }
 Save-Icon "ClientUnlinked" { param($g, $s) Draw-Badge $g $s $grey $false }
 
+# --- info --------------------------------------------------------------------
+
+Save-Icon "Info" {
+    param($g, $s)
+    $pen = Get-Pen $blue (2.8 * $s)
+    $g.DrawEllipse($pen, (4 * $s), (4 * $s), (24 * $s), (24 * $s))
+    $pen.Dispose()
+
+    # The dot and the stem drawn separately: joined up, the "i" turns into a
+    # bar at 16px and the icon stops reading as an i at all.
+    $brush = Get-Brush $blue
+    $g.FillEllipse($brush, (14.2 * $s), (8.5 * $s), (3.6 * $s), (3.6 * $s))
+    $g.FillRectangle($brush, (14.2 * $s), (14 * $s), (3.6 * $s), (9.5 * $s))
+    $brush.Dispose()
+}
+
 # --- the tab's own icon ------------------------------------------------------
 
 Save-Icon "Mcp" {

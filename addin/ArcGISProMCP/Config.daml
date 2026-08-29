@@ -26,6 +26,7 @@
         <tab id="ArcGISProMCP_Tab" caption="MCP">
           <group refID="ArcGISProMCP_BridgeGroup" />
           <group refID="ArcGISProMCP_ClientsGroup" />
+          <group refID="ArcGISProMCP_AboutGroup" />
         </tab>
       </tabs>
 
@@ -56,6 +57,10 @@
           <button refID="ArcGISProMCP_Client_antigravity" size="large" />
           <menu refID="ArcGISProMCP_MoreClientsMenu" size="large" />
         </group>
+
+        <group id="ArcGISProMCP_AboutGroup" caption="About" appearsOnAddInTab="true">
+          <button refID="ArcGISProMCP_InfoButton" size="large" />
+        </group>
       </groups>
 
       <controls>
@@ -80,6 +85,18 @@
                 largeImage="pack://application:,,,/ArcGISProMCP;component/Images/StatusOff32.png">
           <tooltip heading="Bridge status">
             Port, commands served, which AI clients are connected, and the last error.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_InfoButton"
+                caption="Info"
+                className="UI.InfoButton"
+                loadOnClick="false"
+                keytip="MB"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/Info16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/Info32.png">
+          <tooltip heading="About ArcGIS Pro MCP">
+            Open the project page on GitHub.<disabledText />
           </tooltip>
         </button>
 
