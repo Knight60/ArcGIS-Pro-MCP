@@ -313,6 +313,8 @@ served, which clients are connected, and the last error.
 
 **No MCP tab after restarting Pro.** Add-in security is the usual cause.
 Run `Install-ArcGISProMCP.cmd`; it will say so and offer the two ways round it.
+The setting itself is in ArcGIS Pro under **Project ▸ Add-In Manager ▸
+Options** — [what each choice means](docs/addin.md#signing-the-add-in).
 
 **The client shows the server in red.** ArcGIS Pro is closed, or the bridge is
 stopped. Open Pro and check the toggle on the MCP tab shows ⏹ (running).

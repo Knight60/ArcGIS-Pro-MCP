@@ -130,6 +130,17 @@ $paramBlock = "param(`n$parameters`n)"
 
 $version = ([xml](Get-Content (Join-Path $repository "addin\ArcGISProMCP\Config.daml"))
             ).ArcGIS.AddInInfo.version
+# The assembly version is what an MCP client is told when it calls initialize,
+# and Config.daml's is what ArcGIS Pro shows. They are set in different files
+# and drifted immediately: the add-in said 1.0.0 while the server introduced
+# itself as 0.1.0.0.
+$assemblyVersion = ([xml](Get-Content $project)).Project.PropertyGroup.Version |
+    Where-Object { $_ }
+if ("$assemblyVersion" -ne "$version") {
+    throw "Version mismatch: Config.daml says $version, the csproj says " +
+          "$assemblyVersion. They are reported to different people and must agree."
+}
+
 $built = (Get-Date).ToString("yyyy-MM-dd")
 $signedNote = if ($Sign) { "signed" } else { "unsigned" }
 

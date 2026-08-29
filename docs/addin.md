@@ -174,6 +174,11 @@ ArcGIS Pro decides what to load from
 The per-user value wins over the machine-wide one. Pro's installer writes `0`
 to HKLM, so **on a machine nobody has configured, an unsigned add-in loads**.
 
+The same three choices appear in ArcGIS Pro under **Project ▸ Add-In Manager ▸
+Options**, which is where to look when the MCP tab does not appear:
+
+![ArcGIS Pro Add-In Manager, Options tab](images/add-in-manager.png)
+
 An `.esriAddinX` is a zip and cannot carry an Authenticode signature the way an
 `.exe` does. Pro signs it as an OPC package, and ships the tool that does it:
 `ArcGISSignAddIn.exe` in Pro's `bin`. Run with no arguments it opens a wizard;
