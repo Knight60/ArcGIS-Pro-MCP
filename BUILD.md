@@ -55,7 +55,7 @@ Everything a release needs ends up in `dist\`:
 | File | What it is |
 |---|---|
 | `ArcGISProMCP.esriAddinX` | The add-in. Double-clicking it installs it. |
-| `Install-ArcGISProMCP.ps1` | One self-contained file with the add-in embedded, so there is nothing else to download. |
+| `Install-ArcGISProMCP.cmd` | One self-contained file with the add-in embedded, so there is nothing else to download. |
 
 The steps it runs:
 
@@ -159,10 +159,10 @@ what ArcGIS Pro actually enforces is in
 
 ```powershell
 .\scripts\build.ps1 -Sign
-gh release create v0.2.0 `
+gh release create v1.0 `
     dist\ArcGISProMCP.esriAddinX `
-    dist\Install-ArcGISProMCP.ps1 `
-    --title "v0.2.0" --notes-file NOTES.md
+    dist\Install-ArcGISProMCP.cmd `
+    --title "v1.0" --notes-file NOTES.md
 ```
 
 **CI cannot build this.** GitHub Actions has no ArcGIS Pro to reference, so

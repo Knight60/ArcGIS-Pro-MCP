@@ -36,13 +36,12 @@ Pro and the **MCP** tab appears.
 
 ### Or the installer, if that does not work
 
-**[`Install-ArcGISProMCP.ps1`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/Install-ArcGISProMCP.ps1)**
+**[`Install-ArcGISProMCP.cmd`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/Install-ArcGISProMCP.cmd)**
 is one self-contained file — the add-in is inside it, so there is nothing else
 to download.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File Install-ArcGISProMCP.ps1
-```
+Double-click it, or run it from a prompt. It is a `.cmd`, not a `.ps1`, so
+Windows' script execution policy never gets in the way.
 
 Use this one when Pro loads the add-in but the MCP tab never appears: some
 machines have add-in security turned on, and the add-in alone cannot say so.
@@ -50,6 +49,19 @@ The installer checks, tells you which of the two states it found, and offers
 the fix. Run it a second time and it offers to uninstall.
 
 Requires ArcGIS Pro 3.3+. Nothing else — no Python, no SDK, no admin rights.
+
+### Uninstalling
+
+Run the installer again and answer yes, or:
+
+```powershell
+Install-ArcGISProMCP.cmd -Uninstall
+```
+
+It removes every copy it finds, including the one ArcGIS Pro's own installer
+unpacks into a folder named after the add-in id. The `.esriAddinX` cannot
+uninstall anything — double-clicking it only ever installs. The other way is
+ArcGIS Pro itself: **Project ▸ Add-In Manager ▸ Delete this Add-In**.
 
 ---
 
@@ -300,7 +312,7 @@ served, which clients are connected, and the last error.
 ## Troubleshooting
 
 **No MCP tab after restarting Pro.** Add-in security is the usual cause.
-Run `Install-ArcGISProMCP.ps1`; it will say so and offer the two ways round it.
+Run `Install-ArcGISProMCP.cmd`; it will say so and offer the two ways round it.
 
 **The client shows the server in red.** ArcGIS Pro is closed, or the bridge is
 stopped. Open Pro and check the toggle on the MCP tab shows ⏹ (running).

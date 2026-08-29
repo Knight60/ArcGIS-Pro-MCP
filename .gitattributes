@@ -4,6 +4,6 @@
 
 # The single-file installer is generated: mostly base64, and it changes in
 # full on every build. Marking it binary keeps diffs from trying to render it.
-dist/Install-ArcGISProMCP.ps1 binary
+dist/Install-ArcGISProMCP.cmd binary
 
 *.png binary

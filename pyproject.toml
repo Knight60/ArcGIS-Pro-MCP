@@ -1,6 +1,6 @@
 [project]
 name = "arcgis-pro-mcp"
-version = "0.2.0"
+version = "1.0.0"
 description = "MCP server that lets AI assistants drive a live ArcGIS Pro session: 112 tools plus full arcpy access"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -103,6 +103,18 @@ function Confirm-Action($question, $default = 1) {
     }
 }
 
+function Remove-EmptyAddInFolders {
+    # RegisterAddIn.exe unpacks into a folder named after the add-in id, so
+    # removing the file leaves that folder behind looking like something is
+    # still installed.
+    if (-not (Test-Path $target)) { return }
+    Get-ChildItem $target -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        if (-not (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue)) {
+            Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Find-InstalledCopies {
     # Pro scans this folder and its subfolders, and RegisterAddIn.exe unpacks
     # into a subfolder of its own. Two copies of the same add-in id is not an
@@ -120,6 +132,7 @@ if ($Uninstall) {
         Remove-Item $copy.FullName -Force
         Write-Host "Removed $($copy.FullName)"
     }
+    Remove-EmptyAddInFolders
     Write-Host "Restart ArcGIS Pro. The certificate, if one was imported, is left alone;"
     Write-Host "remove it with scripts\sign_addin.ps1 -Untrust."
     exit 0
@@ -173,6 +186,7 @@ if ($installed -and -not $Reinstall) {
                 Remove-Item $copy.FullName -Force
                 Good "Removed $($copy.FullName)"
             }
+            Remove-EmptyAddInFolders
             Say ""
             Say "Restart ArcGIS Pro. Run this again to install it back."
             Say "Any certificate imported earlier is left alone; remove it with"
@@ -195,6 +209,7 @@ foreach ($copy in $stale) {
     Remove-Item $copy.FullName -Force
     Say "Removed an older copy: $($copy.FullName)"
 }
+if ($stale) { Remove-EmptyAddInFolders }
 
 New-Item -ItemType Directory -Force $target | Out-Null
 Copy-Item $AddInPath (Join-Path $target "ArcGISProMCP.esriAddinX") -Force
