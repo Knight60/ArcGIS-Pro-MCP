@@ -29,23 +29,20 @@ each.
 
 ## Install
 
-Take either file from
-[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist). It is
-committed to the repository rather than attached to a release, because GitHub
-Actions has no ArcGIS Pro to build against — a build only exists if someone
-with Pro installed produces it, and committing it keeps the download the same
-age as the source beside it.
+Get it from the
+**[latest release](https://github.com/Knight60/ArcGIS-Pro-MCP/releases/latest)**
+and pick one of the two files.
 
 ### The add-in on its own
 
 Download
-**[`ArcGISProMCP.esriAddinX`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/ArcGISProMCP.esriAddinX)**
+**[`ArcGISProMCP.esriAddinX`](https://github.com/Knight60/ArcGIS-Pro-MCP/releases/latest/download/ArcGISProMCP.esriAddinX)**
 and double-click it. ArcGIS Pro's own installer takes it from there. Restart
 Pro and the **MCP** tab appears.
 
 ### Or the installer, if that does not work
 
-**[`Install-ArcGISProMCP.cmd`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/Install-ArcGISProMCP.cmd)**
+**[`Install-ArcGISProMCP.cmd`](https://github.com/Knight60/ArcGIS-Pro-MCP/releases/latest/download/Install-ArcGISProMCP.cmd)**
 is one self-contained file — the add-in is inside it, so there is nothing else
 to download.
 
@@ -58,6 +55,23 @@ The installer checks, tells you which of the two states it found, and offers
 the fix. Run it a second time and it offers to uninstall.
 
 Requires ArcGIS Pro 3.3+. Nothing else — no Python, no SDK, no admin rights.
+
+<details>
+<summary>Or the build straight off <code>main</code></summary>
+
+The same two files are also committed to
+[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist), which is
+the build the current source produces. Between releases it can be ahead of the
+latest release — a fix that is committed but not yet tagged will be there first.
+
+They are committed rather than left as build output because GitHub Actions has
+no ArcGIS Pro to build against: a build only exists if someone with Pro
+installed produces it. Committing it keeps a download beside the source that
+made it.
+
+Take the release unless you have a reason to want something newer than it.
+
+</details>
 
 ### Uninstalling
 

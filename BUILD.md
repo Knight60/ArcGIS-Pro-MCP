@@ -1,8 +1,8 @@
 # Building from source
 
-You do not need to build this to use it. The built add-in and installer are in
-[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist); see
-[README.md](README.md).
+You do not need to build this to use it — take the
+[latest release](https://github.com/Knight60/ArcGIS-Pro-MCP/releases/latest)
+and see [README.md](README.md).
 
 This page is for changing the code or producing your own build.
 
@@ -171,9 +171,19 @@ run `tests/client-registration` and the Python tests, neither of which needs
 Pro.
 
 That is also why `dist/` is committed rather than ignored: with no CI build,
-committing it is what gives people a download link that always matches the
-source beside it. Commit the rebuilt artifacts along with whatever change
-produced them, so the two never disagree.
+committing it is what gives people a download beside the source that made it,
+and what carries a fix between releases. Commit the rebuilt artifacts along
+with whatever change produced them, so the two never disagree.
+
+**Upload the same files to the release.** A rebuild changes the assembly even
+when no source did -- the compiler stamps a fresh identity every time -- so an
+asset uploaded before a later build is no longer the file `dist/` holds. Both
+places claiming to be the current build while disagreeing is the state worth
+avoiding; replacing the assets takes a moment and settles it:
+
+```powershell
+gh release upload v1.0 dist\ArcGISProMCP.esriAddinX dist\Install-ArcGISProMCP.cmd --clobber
+```
 
 Set `version` in `addin/ArcGISProMCP/Config.daml` first. It appears in the
 single-file installer's header and is what the installer compares against an
