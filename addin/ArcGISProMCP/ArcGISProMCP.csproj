@@ -44,6 +44,15 @@
     <ArcGISProBin>$(ArcGISProDir)\bin</ArcGISProBin>
   </PropertyGroup>
 
+  <!--
+    Ribbon icons. Resource, not Content: they are read through pack:// URIs
+    from inside the assembly, so the .esriAddinX stays a single file.
+    Regenerate them with scripts/make_icons.ps1.
+  -->
+  <ItemGroup>
+    <Resource Include="Images\*.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="ArcGIS.Core">
       <HintPath>$(ArcGISProBin)\ArcGIS.Core.dll</HintPath>

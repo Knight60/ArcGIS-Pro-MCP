@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Checks the AI-client registration against copies in a temp folder, so it
+    never touches a real config.
+
+    It compiles the add-in's Clients/McpClients.cs directly rather than
+    referencing the add-in: that file deliberately uses nothing from the
+    ArcGIS Pro SDK, so these tests run anywhere, with no Pro installed.
+
+        dotnet run (from this folder)
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ClientRegistration</AssemblyName>
+    <RootNamespace>ClientRegistration</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\addin\ArcGISProMCP\Clients\McpClients.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>

@@ -80,6 +80,71 @@ tool catalog, tests และ CLI ใช้ต่อได้โดยไม่�
 
 ผู้ใช้ปลายทางแค่ดับเบิลคลิกไฟล์ `.esriAddinX` ครั้งเดียว
 
+## แท็บ MCP บน ribbon
+
+```
+┌─ Bridge ──────────┬─ AI clients ─────────────────────────────────┐
+│  ⏹        (( ))   │   ✓          ⊕        ⊕         ⊕            │
+│  Stop     Port    │  Claude    Codex   Antigravity  More         │
+│  bridge   6510    │   Code                          clients ˅    │
+└───────────────────┴──────────────────────────────────────────────┘
+```
+
+**ปุ่มเดียวทำทั้ง start และ stop** เหมือนปุ่มเล่นเพลง — icon บอกว่า*กดแล้วจะเกิดอะไร*
+กำลังรันอยู่ก็เป็น ⏹ แดง หยุดอยู่ก็เป็น ▶ เขียว (เดิมเป็นสองปุ่ม แปลว่าปุ่มหนึ่งกดผิด
+เสมอ และไม่มีปุ่มไหนบอกว่ากำลังรันอยู่หรือเปล่า)
+
+**ปุ่ม status** เป็นสัญญาณกระจายสีเขียวตอน listening และจุดเทาในวงตอนหยุด
+caption บอก port เลย ไม่ต้องกดก็รู้
+
+### ปุ่ม AI client
+
+| icon | ความหมาย |
+|---|---|
+| ✓ เขียว | client นั้นมี `arcgis` ใน config แล้ว — กดเพื่อเอาออก |
+| ⊕ เทา | ยังไม่มี — กดเพื่อเพิ่ม |
+| เทาจาง กดไม่ได้ | ไม่พบว่าติดตั้ง client ตัวนั้น |
+
+สถานะอ่านจากไฟล์ config จริงทุกครั้ง ไม่ได้จำไว้ (cache 5 วินาที เพราะ ArcGIS Pro
+เรียก `OnUpdate` ถี่มาก) กดแล้วสถานะเปลี่ยนทันที
+
+client ที่รองรับ — path และรูปแบบทั้งหมดนี้อ่านจากเครื่องที่ติดตั้งจริง ไม่ได้เดา
+เพราะ config ที่เขียนผิดรูปแบบจะ**ไม่ error แต่ถูกเมิน** ผู้ใช้จะเห็นแค่ client ที่บอกว่า
+ปกติดีแต่มองไม่เห็น ArcGIS Pro:
+
+| Client | ไฟล์ | รูปแบบ | ทาง |
+|---|---|---|---|
+| Claude Code | `~/.claude.json` | `mcpServers` | HTTP |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.arcgis]` | stdio |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` | `mcpServers` + `serverUrl` | HTTP |
+| VS Code | `%APPDATA%/Code/User/mcp.json` | `servers` | HTTP |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` | HTTP |
+| Cline | `~/.cline/data/settings/cline_mcp_settings.json` | `mcpServers` | HTTP |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers` | HTTP |
+| Claude Desktop | `%APPDATA%/Claude/claude_desktop_config.json` | `mcpServers` | stdio |
+
+Codex กับ Claude Desktop เป็น **stdio** เพราะทั้งคู่เป็นฝ่าย*เปิด*โปรเซส MCP ไม่ใช่
+ต่อไปที่ URL จึงต้องมี `arcgis-pro-mcp.exe` (`pip install arcgis-pro-mcp`) ถ้าไม่มี
+ปุ่มจะบอกตรง ๆ แทนที่จะเขียน config ที่ชี้ไปที่ไม่มีอะไร
+
+ก่อนแก้ config ทุกครั้งจะสำรองไว้เป็น `<ไฟล์>.arcgis-mcp.bak` — การเขียน JSON กลับ
+จะ format ใหม่ทั้งไฟล์และคอมเมนต์หายไป ส่วนหนึ่งของไฟล์พวกนี้เป็น setting อื่น ๆ
+ของผู้ใช้หลายหมื่น byte
+
+ทดสอบ round trip ว่าไม่ทำของเดิมหายด้วย:
+
+```powershell
+dotnet run --project tests\client-registration
+```
+
+รันได้โดยไม่ต้องมี ArcGIS Pro เพราะ `Clients/McpClients.cs` ตั้งใจไม่พึ่ง SDK เลย
+
+### icon
+
+สร้างจาก `scripts/make_icons.ps1` ไม่ได้ commit เป็น PNG ลอย ๆ — แก้ icon แล้ว
+diff อ่านรู้เรื่อง วาดให้อ่านออกที่ 16px และใช้ทั้งสีและรูปทรงบอกสถานะ เพราะสีอย่างเดียว
+ไม่ช่วยคนที่แยกสีไม่ออก
+
 ## การเซ็น add-in (add-in security)
 
 ArcGIS Pro ตัดสินว่าจะโหลด add-in ไหนจาก

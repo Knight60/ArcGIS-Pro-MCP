@@ -5,13 +5,14 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://schemas.esri.com/DADF/Registry Registry.xsd">
 
-  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.1.0" desktopVersion="3.7">
+  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.2.0" desktopVersion="3.7">
     <Name>ArcGIS Pro MCP</Name>
     <Description>Lets AI assistants drive this ArcGIS Pro session over the Model Context Protocol.</Description>
     <Author>ArcGIS Pro MCP</Author>
     <Company>ArcGIS Pro MCP</Company>
-    <Date>08/28/2026</Date>
+    <Date>08/29/2026</Date>
     <Subject>Framework</Subject>
+    <Image>pack://application:,,,/ArcGISProMCP;component/Images/Mcp32.png</Image>
   </AddInInfo>
 
   <modules>
@@ -23,36 +24,50 @@
 
       <tabs>
         <tab id="ArcGISProMCP_Tab" caption="MCP">
-          <group refID="ArcGISProMCP_Group" />
+          <group refID="ArcGISProMCP_BridgeGroup" />
+          <group refID="ArcGISProMCP_ClientsGroup" />
         </tab>
       </tabs>
 
       <groups>
-        <group id="ArcGISProMCP_Group" caption="AI bridge" appearsOnAddInTab="true">
-          <button refID="ArcGISProMCP_StartButton" size="large" />
-          <button refID="ArcGISProMCP_StopButton" size="large" />
+        <!--
+          One button starts and stops, the way a play button does: its icon is
+          what the next click will do. Two buttons meant one of them was always
+          the wrong one to press, and neither showed whether it was running.
+        -->
+        <group id="ArcGISProMCP_BridgeGroup" caption="Bridge" appearsOnAddInTab="true">
+          <button refID="ArcGISProMCP_ToggleButton" size="large" />
           <button refID="ArcGISProMCP_StatusButton" size="large" />
+        </group>
+
+        <!--
+          A tick means that client already has this server in its config, a plus
+          means clicking will put it there, and greyed means the client is not
+          installed. Read off the config files, not remembered.
+
+          The three named here are large so their state is visible without a
+          click; the rest are one menu down, because eight large buttons is a
+          ribbon nobody can read. Small buttons were tried and ArcGIS Pro drew
+          them as bare icons with no captions at all.
+        -->
+        <group id="ArcGISProMCP_ClientsGroup" caption="AI clients" appearsOnAddInTab="true">
+          <button refID="ArcGISProMCP_Client_claudecode" size="large" />
+          <button refID="ArcGISProMCP_Client_codex" size="large" />
+          <button refID="ArcGISProMCP_Client_antigravity" size="large" />
+          <menu refID="ArcGISProMCP_MoreClientsMenu" size="large" />
         </group>
       </groups>
 
       <controls>
-        <button id="ArcGISProMCP_StartButton"
+        <button id="ArcGISProMCP_ToggleButton"
                 caption="Start bridge"
-                className="UI.StartServerButton"
+                className="UI.ToggleServerButton"
                 loadOnClick="false"
-                keytip="MS">
+                keytip="MS"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/Start16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/Start32.png">
           <tooltip heading="Start the MCP bridge">
-            Start listening so AI assistants can control this ArcGIS Pro session.<disabledText />
-          </tooltip>
-        </button>
-
-        <button id="ArcGISProMCP_StopButton"
-                caption="Stop bridge"
-                className="UI.StopServerButton"
-                loadOnClick="false"
-                keytip="MT">
-          <tooltip heading="Stop the MCP bridge">
-            Stop listening. AI assistants lose access to this session.<disabledText />
+            Start listening so AI assistants can drive this ArcGIS Pro session.<disabledText />
           </tooltip>
         </button>
 
@@ -60,12 +75,123 @@
                 caption="Status"
                 className="UI.StatusButton"
                 loadOnClick="false"
-                keytip="MI">
+                keytip="MI"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/StatusOff16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/StatusOff32.png">
           <tooltip heading="Bridge status">
-            Show the port, how many commands have been served, and the last error.<disabledText />
+            Port, commands served, which AI clients are connected, and the last error.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_claudecode"
+                caption="Claude Code"
+                className="UI.ClaudeCodeButton"
+                loadOnClick="false"
+                keytip="MC"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Claude Code">
+            Add or remove the 'arcgis' MCP server in Claude Code's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_codex"
+                caption="Codex"
+                className="UI.CodexButton"
+                loadOnClick="false"
+                keytip="MX"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Codex">
+            Add or remove the 'arcgis' MCP server in Codex's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_antigravity"
+                caption="Antigravity"
+                className="UI.AntigravityButton"
+                loadOnClick="false"
+                keytip="MA"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Antigravity">
+            Add or remove the 'arcgis' MCP server in Antigravity's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_vscode"
+                caption="VS Code"
+                className="UI.VSCodeButton"
+                loadOnClick="false"
+                keytip="MV"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="VS Code">
+            Add or remove the 'arcgis' MCP server in VS Code's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_cursor"
+                caption="Cursor"
+                className="UI.CursorButton"
+                loadOnClick="false"
+                keytip="MR"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Cursor">
+            Add or remove the 'arcgis' MCP server in Cursor's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_cline"
+                caption="Cline"
+                className="UI.ClineButton"
+                loadOnClick="false"
+                keytip="ML"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Cline">
+            Add or remove the 'arcgis' MCP server in Cline's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_geminicli"
+                caption="Gemini CLI"
+                className="UI.GeminiCliButton"
+                loadOnClick="false"
+                keytip="MG"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Gemini CLI">
+            Add or remove the 'arcgis' MCP server in Gemini CLI's configuration.<disabledText />
+          </tooltip>
+        </button>
+
+        <button id="ArcGISProMCP_Client_claudedesktop"
+                caption="Claude Desktop"
+                className="UI.ClaudeDesktopButton"
+                loadOnClick="false"
+                keytip="MD"
+                smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+                largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <tooltip heading="Claude Desktop">
+            Add or remove the 'arcgis' MCP server in Claude Desktop's configuration.<disabledText />
           </tooltip>
         </button>
       </controls>
+
+      <menus>
+        <menu id="ArcGISProMCP_MoreClientsMenu"
+              caption="More clients"
+              smallImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked16.png"
+              largeImage="pack://application:,,,/ArcGISProMCP;component/Images/ClientUnlinked32.png">
+          <button refID="ArcGISProMCP_Client_vscode" />
+          <button refID="ArcGISProMCP_Client_cursor" />
+          <button refID="ArcGISProMCP_Client_cline" />
+          <button refID="ArcGISProMCP_Client_geminicli" />
+          <button refID="ArcGISProMCP_Client_claudedesktop" />
+        </menu>
+      </menus>
 
     </insertModule>
   </modules>
