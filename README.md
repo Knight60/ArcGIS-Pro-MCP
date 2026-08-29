@@ -1,12 +1,11 @@
 # ArcGIS Pro MCP
 
-Drive a running ArcGIS Pro session from an AI assistant, over the
-[Model Context Protocol](https://modelcontextprotocol.io).
+**An ArcGIS Pro add-in that lets you say what you want.**
 
-It is an ArcGIS Pro add-in that speaks MCP directly. Ask Claude, Codex,
-Antigravity or any other MCP client to open data, run geoprocessing, style
-layers, build layouts and read attributes — against the project you have open,
-not a copy of it.
+It implements the [Model Context Protocol](https://modelcontextprotocol.io)
+inside ArcGIS Pro itself, so an AI assistant — Claude, Codex, Antigravity, or
+any other MCP client — can work on the project already open in front of you.
+Your data, your maps, your layouts. Not a copy, not an export.
 
 ```text
 "Style the provinces by area, pastel red through green"
@@ -14,7 +13,15 @@ not a copy of it.
 "Export the current map view as a PNG and show me"
 ```
 
-**112 tools.** 109 run inside ArcGIS Pro itself, in about 9 ms each.
+The aim is the whole of ArcGIS Pro, not a convenient corner of it. **112 named
+tools** cover the work of an ordinary day — layers, attributes, selections,
+symbology, layouts, rasters, editing. `run_geoprocessing_tool` reaches every
+one of Pro's ~2,000 geoprocessing tools by name. `execute_arcpy_code` runs
+arbitrary arcpy inside the running application. Between them, there is little
+ArcGIS Pro can do that cannot be asked for in a sentence.
+
+109 of the 112 tools execute inside ArcGIS Pro's own process, in about 9 ms
+each.
 
 ![The MCP tab in ArcGIS Pro, with Thailand's provinces graduated by area](docs/images/mcp-menu.png)
 
