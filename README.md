@@ -20,8 +20,13 @@ not a copy of it.
 
 ## Install
 
-Download from [Releases](https://github.com/Knight60/ArcGIS-Pro-MCP/releases)
-and pick one:
+Download from [Releases](https://github.com/Knight60/ArcGIS-Pro-MCP/releases),
+or take the current build straight from
+[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist) — it is
+committed, because GitHub Actions has no ArcGIS Pro to build against and a
+release can only be produced on a machine that has it.
+
+Either way, pick one of these two:
 
 ### The add-in on its own
 

@@ -170,6 +170,11 @@ releases are built on a machine that has it and uploaded by hand. CI can still
 run `tests/client-registration` and the Python tests, neither of which needs
 Pro.
 
+That is also why `dist/` is committed rather than ignored: with no CI build,
+committing it is what gives people a download link that always matches the
+source beside it. Commit the rebuilt artifacts along with whatever change
+produced them, so the two never disagree.
+
 Set `version` in `addin/ArcGISProMCP/Config.daml` first. It appears in the
 single-file installer's header and is what the installer compares against an
 existing installation to tell an upgrade from a repeat run.

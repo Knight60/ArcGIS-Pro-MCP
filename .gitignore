@@ -1,13 +1,19 @@
 __pycache__/
 *.pyc
 *.egg-info/
-dist/
 build/
 .venv/
 venv/
 uv.lock
 ArcGISMCP.*.pyt.xml
 *.pyt.xml
+
+# dist/ holds the released add-in and installer, and those ARE committed --
+# GitHub Actions has no ArcGIS Pro to build against, so a release can only be
+# produced on a machine that has it. Python's own build writes wheels into the
+# same folder, and those are not wanted.
+dist/*.whl
+dist/*.tar.gz
 
 # C# add-in build output
 addin/**/bin/
@@ -16,9 +22,6 @@ addin/**/obj/
 # C# test project build output
 tests/**/bin/
 tests/**/obj/
-
-# Release artifacts produced by scripts/build.ps1
-dist/
 
 # Backups this project's own tooling writes
 *.arcgis-mcp.bak
