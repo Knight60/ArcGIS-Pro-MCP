@@ -156,12 +156,25 @@ addin/ArcGISProMCP/
 
 ## สถานะ
 
-ทดสอบกับ ArcGIS Pro 3.5.2 จริงแล้ว — **90 คำสั่งอยู่ใน add-in**, latency 9ms
-(เทียบกับ ~28 วินาทีของฝั่ง Python)
+ทดสอบกับ ArcGIS Pro 3.7.1 จริงแล้ว — **109 จาก 112 คำสั่งอยู่ใน add-in**,
+latency 9ms (เทียบกับ ~28 วินาทีของฝั่ง Python)
 
-เหลือที่ Python fallback ตัวเดียว: **`execute_arcpy_code`** ซึ่งตั้งใจให้อยู่
-ตรงนั้นถาวร เพราะ add-in ที่ compile แล้วรันโค้ดที่แต่งขึ้นตอนนั้นไม่ได้
+อีก 3 ตัวอยู่ฝั่ง Python และ**ควรอยู่ตรงนั้น**:
+
+| คำสั่ง | ทำไมไม่ย้าย |
+|---|---|
+| `execute_arcpy_code` | add-in ที่ compile แล้วรันโค้ดที่แต่งขึ้นตอนนั้นไม่ได้ |
+| `get_pump_status` | มันรายงานสถานะ dispatcher **ของฝั่ง Python** ซึ่งมีอยู่จริงแค่ที่นั่น |
+| `stop_pump` | เช่นเดียวกัน — add-in ไม่มี pump ให้หยุด มันใช้ MCT ตรง ๆ |
 
 `run_geoprocessing_tool` รับ named parameters ได้แล้ว โดยใช้ตารางลำดับ
-parameter ของ 1,941 tool ที่ดึงจาก arcpy (`scripts/dump_gp_parameters.py`)
+parameter ของ ~2,000 tool ที่ดึงจาก arcpy (`scripts/dump_gp_parameters.py`)
 แล้วฝังไว้ — Pro SDK เองไม่มี API บอกชื่อ parameter ของ tool
+
+### สิ่งที่ต้องระวังตอนใช้
+
+- layer ที่อยู่ใน group ต้องเรียกด้วยชื่อเต็ม `"ชื่อกลุ่ม\ชื่อ layer"` เวลาส่งให้
+  คำสั่งที่วิ่งผ่าน geoprocessing (`add_fields`, `apply_symbology_from_layer`,
+  `calculate_field` ฯลฯ) ไม่งั้นจะได้ `ERROR 000732: Dataset does not exist`
+- `duplicate_layer` ทำสำเนา **layer** ไม่ใช่ข้อมูล — ทั้งสอง layer ชี้ dataset
+  เดียวกัน การ `add_fields` บนสำเนาจึงแก้ไฟล์ต้นทางจริง

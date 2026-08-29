@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ArcGIS.Core.Data;
+using System.IO;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Mapping;
 using ArcGISProMCP.Bridge;
@@ -44,6 +46,29 @@ namespace ArcGISProMCP.Commands
 
             CommandRouter.Register("get_broken_layers", Group,
                 "List layers and tables whose data source is missing.", GetBrokenLayers);
+
+            CommandRouter.Register("add_web_layer", Group,
+                "Add a web service layer by URL.", AddWebLayer);
+
+            CommandRouter.Register("create_group_layer", Group,
+                "Create a group layer, optionally moving layers into it.",
+                CreateGroupLayer);
+
+            CommandRouter.Register("duplicate_layer", Group,
+                "Copy a layer within the map so it can be symbolised differently.",
+                DuplicateLayer);
+
+            CommandRouter.Register("move_layer", Group,
+                "Reorder a layer, or move it into a group layer.", MoveLayer);
+
+            CommandRouter.Register("set_basemap", Group,
+                "Set the map's basemap.", SetBasemap);
+
+            CommandRouter.Register("set_layer_scale_range", Group,
+                "Limit the scale range a layer draws at.", SetScaleRange);
+
+            CommandRouter.Register("repair_layer_source", Group,
+                "Repoint a layer at a new workspace or dataset.", RepairSource);
         }
 
         /// <summary>
@@ -351,6 +376,305 @@ namespace ArcGISProMCP.Commands
                 ["extent"] = MapHelpers.Describe(extent),
                 ["scale"] = view.Camera?.Scale,
             };
+        }
+
+        // --- web layers -------------------------------------------------------
+
+        private static object AddWebLayer(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var url = parameters.Require("url");
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                throw new ArgumentException($"'{url}' is not a URL.");
+
+            // One service URL can bring in several layers -- a map service
+            // publishes one per sublayer -- so report what actually arrived
+            // rather than treating CreateLayer's return value as the whole story.
+            var before = map.Layers.Count;
+            var layer = LayerFactory.Instance.CreateLayer(uri, map);
+            if (layer == null)
+                throw new InvalidOperationException(
+                    $"ArcGIS Pro could not add {url}. Check that the service is "
+                    + "reachable, and that you are signed in if it is secured.");
+
+            return new Dictionary<string, object>
+            {
+                ["added"] = layer.Name,
+                ["layers_added"] = map.Layers.Count - before,
+                ["type"] = layer.GetType().Name,
+                ["map"] = map.Name,
+                ["url"] = url,
+            };
+        }
+
+        // --- arranging --------------------------------------------------------
+
+        private static object CreateGroupLayer(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var name = parameters.Require("name");
+
+            var group = LayerFactory.Instance.CreateGroupLayer(map, 0, name);
+            var moved = new List<string>();
+
+            foreach (var member in parameters.GetStringList("layer_names")
+                                   ?? new List<string>())
+            {
+                var layer = MapHelpers.FindLayer(map, member);
+                map.MoveLayer(layer, group, moved.Count);
+                moved.Add(layer.Name);
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["created"] = group.Name,
+                ["moved_in"] = moved,
+                ["map"] = map.Name,
+            };
+        }
+
+        private static object DuplicateLayer(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var layer = MapHelpers.FindLayer(map, parameters.Require("layer_name"));
+
+            if (!LayerFactory.Instance.CanCopyLayer(layer))
+                throw new InvalidOperationException(
+                    $"'{layer.Name}' cannot be copied within the map.");
+
+            // The copy goes directly above the original, which is where anyone
+            // duplicating a layer in order to restyle it expects to find it.
+            var container = layer.Parent as ILayerContainerEdit ?? map;
+            var index = container.Layers.IndexOf(layer);
+            var copy = LayerFactory.Instance.CopyLayer(layer, container, index);
+
+            var newName = parameters.GetString("new_name");
+            if (!string.IsNullOrWhiteSpace(newName)) copy.SetName(newName);
+
+            return new Dictionary<string, object>
+            {
+                ["duplicated"] = layer.Name,
+                ["new_layer"] = copy.Name,
+                ["map"] = map.Name,
+            };
+        }
+
+        private static object MoveLayer(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var layer = MapHelpers.FindLayer(map, parameters.Require("layer_name"));
+            var groupName = parameters.GetString("group_layer");
+            var referenceName = parameters.GetString("reference_layer");
+            var position = (parameters.GetString("position", "BEFORE") ?? "BEFORE")
+                .ToUpperInvariant();
+
+            if (!string.IsNullOrWhiteSpace(groupName))
+            {
+                var group = MapHelpers.FindLayer(map, groupName) as GroupLayer
+                    ?? throw new ArgumentException($"'{groupName}' is not a group layer.");
+                map.MoveLayer(layer, group, 0);
+                return new Dictionary<string, object>
+                {
+                    ["moved"] = layer.Name,
+                    ["into_group"] = group.Name,
+                    ["map"] = map.Name,
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(referenceName))
+                throw new ArgumentException(
+                    "Give either reference_layer (with position) or group_layer.");
+
+            var reference = MapHelpers.FindLayer(map, referenceName);
+            var container = reference.Parent as ILayerContainerEdit ?? map;
+            var index = container.Layers.IndexOf(reference);
+            if (index < 0)
+                throw new InvalidOperationException(
+                    $"'{reference.Name}' and '{layer.Name}' are not in the same container.");
+
+            // BEFORE means above in the table of contents, which is the lower
+            // index: the list is drawn top first.
+            if (position == "AFTER") index++;
+            map.MoveLayer(layer, index);
+
+            return new Dictionary<string, object>
+            {
+                ["moved"] = layer.Name,
+                ["position"] = position,
+                ["reference_layer"] = reference.Name,
+                ["index"] = index,
+                ["map"] = map.Name,
+            };
+        }
+
+        // --- appearance -------------------------------------------------------
+
+        /// <summary>
+        /// The names ArcGIS Pro shows in the Basemap gallery, which are not
+        /// always what the enum calls them: the gallery's "Imagery" is
+        /// Basemap.Satellite.
+        /// </summary>
+        private static readonly Dictionary<string, Basemap> Basemaps =
+            new Dictionary<string, Basemap>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["topographic"] = Basemap.Topographic,
+                ["imagery"] = Basemap.Satellite,
+                ["imagery hybrid"] = Basemap.Hybrid,
+                ["streets"] = Basemap.Streets,
+                ["navigation"] = Basemap.NavigationVector,
+                ["light gray canvas"] = Basemap.Gray,
+                ["dark gray canvas"] = Basemap.DarkGray,
+                ["terrain"] = Basemap.Terrain,
+                ["oceans"] = Basemap.Oceans,
+                ["openstreetmap"] = Basemap.OpenStreetMap,
+                ["national geographic style"] = Basemap.NationalGeographic,
+                ["none"] = Basemap.None,
+            };
+
+        private static object SetBasemap(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var name = parameters.Require("basemap_name");
+
+            if (!Basemaps.TryGetValue(name.Trim(), out var basemap)
+                && !Enum.TryParse(name.Replace(" ", ""), true, out basemap))
+                throw new ArgumentException(
+                    $"Unknown basemap '{name}'. Try one of: "
+                    + string.Join(", ", Basemaps.Keys));
+
+            map.SetBasemapLayers(basemap);
+
+            return new Dictionary<string, object>
+            {
+                ["map"] = map.Name,
+                ["basemap"] = basemap.ToString(),
+            };
+        }
+
+        private static object SetScaleRange(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var layer = MapHelpers.FindLayer(map, parameters.Require("layer_name"));
+            var applied = new Dictionary<string, object>();
+
+            // 0 means "no limit" in the Pro UI, and SetMinScale(0) says the same
+            // thing to the API, so the value goes straight through.
+            if (parameters.Has("min_scale"))
+            {
+                layer.SetMinScale(parameters.GetDouble("min_scale"));
+                applied["min_scale"] = layer.MinScale;
+            }
+            if (parameters.Has("max_scale"))
+            {
+                layer.SetMaxScale(parameters.GetDouble("max_scale"));
+                applied["max_scale"] = layer.MaxScale;
+            }
+
+            if (applied.Count == 0)
+                throw new ArgumentException("Provide min_scale and/or max_scale.");
+
+            applied["layer"] = layer.Name;
+            return applied;
+        }
+
+        // --- repairing --------------------------------------------------------
+
+        private static object RepairSource(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var name = parameters.Require("layer_name");
+            var dataset = parameters.GetString("dataset_name");
+
+            var layer = map.GetLayersAsFlattenedList()
+                .FirstOrDefault(l => string.Equals(l.Name, name,
+                                                   StringComparison.OrdinalIgnoreCase));
+            var table = layer != null ? null : map.GetStandaloneTablesAsFlattenedList()
+                .FirstOrDefault(t => string.Equals(t.Name, name,
+                                                   StringComparison.OrdinalIgnoreCase));
+            if (layer == null && table == null)
+                throw new ArgumentException($"No layer or table called '{name}'.");
+
+            var wasBroken = layer != null
+                ? layer.ConnectionStatus != ConnectionStatus.Connected
+                : table.ConnectionStatus != ConnectionStatus.Connected;
+
+            var workspace = SplitSource(parameters.Require("new_source"), ref dataset);
+            var datasetName = string.IsNullOrWhiteSpace(dataset) ? name : dataset;
+
+            using (var datastore = OpenDatastore(workspace))
+            {
+                if (layer is FeatureLayer featureLayer)
+                {
+                    using var featureClass = OpenDataset<FeatureClass>(datastore, datasetName);
+                    featureLayer.ReplaceDataSource(featureClass);
+                }
+                else if (table != null)
+                {
+                    using var replacement = OpenDataset<Table>(datastore, datasetName);
+                    table.ReplaceDataSource(replacement);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"'{name}' is a {layer.GetType().Name}, which this command cannot "
+                        + "repoint. Use execute_arcpy_code for that layer type.");
+                }
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["repaired"] = name,
+                ["was_broken"] = wasBroken,
+                ["connected"] = layer != null
+                    ? layer.ConnectionStatus == ConnectionStatus.Connected
+                    : table.ConnectionStatus == ConnectionStatus.Connected,
+                ["workspace"] = workspace,
+                ["dataset"] = datasetName,
+                ["map"] = map.Name,
+            };
+        }
+
+        /// <summary>
+        /// new_source may be a workspace or a full dataset path. Split the
+        /// latter, so callers can pass whichever they have to hand.
+        /// </summary>
+        private static string SplitSource(string source, ref string dataset)
+        {
+            var normalised = source.Replace('/', '\\').TrimEnd('\\');
+            if (Directory.Exists(normalised)) return normalised;
+
+            var parent = Path.GetDirectoryName(normalised);
+            if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+            {
+                if (string.IsNullOrWhiteSpace(dataset))
+                {
+                    dataset = normalised.EndsWith(".shp", StringComparison.OrdinalIgnoreCase)
+                        ? Path.GetFileNameWithoutExtension(normalised)
+                        : Path.GetFileName(normalised);
+                }
+                return parent;
+            }
+
+            throw new ArgumentException(
+                $"'{source}' is not a folder, geodatabase or dataset path.");
+        }
+
+        private static Datastore OpenDatastore(string workspace)
+        {
+            if (workspace.EndsWith(".gdb", StringComparison.OrdinalIgnoreCase))
+                return new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(workspace)));
+            if (workspace.EndsWith(".sde", StringComparison.OrdinalIgnoreCase))
+                return new Geodatabase(new DatabaseConnectionFile(new Uri(workspace)));
+            return new FileSystemDatastore(new FileSystemConnectionPath(
+                new Uri(workspace), FileSystemDatastoreType.Shapefile));
+        }
+
+        private static T OpenDataset<T>(Datastore datastore, string name) where T : Dataset
+        {
+            return datastore is Geodatabase geodatabase
+                ? geodatabase.OpenDataset<T>(name)
+                : ((FileSystemDatastore)datastore).OpenDataset<T>(name);
         }
     }
 }

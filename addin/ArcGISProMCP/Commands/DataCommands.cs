@@ -38,6 +38,12 @@ namespace ArcGISProMCP.Commands
             CommandRouter.Register("clear_selection", "selection",
                 "Clear the selection on one layer, or on the whole map.", ClearSelection);
 
+            CommandRouter.Register("set_selection", "selection",
+                "Select specific features by ObjectID.", SetSelection);
+
+            CommandRouter.Register("zoom_to_selection", "selection",
+                "Zoom the map view to the selected features.", ZoomToSelection);
+
             CommandRouter.Register("get_selection", "selection",
                 "Report what is currently selected.", GetSelection);
         }
@@ -400,6 +406,12 @@ namespace ArcGISProMCP.Commands
                 case "REMOVE_FROM_SELECTION": return SelectionCombinationMethod.Subtract;
                 case "SUBSET_SELECTION": return SelectionCombinationMethod.And;
                 case "SWITCH_SELECTION": return SelectionCombinationMethod.XOR;
+                // The set-algebra names, which is how set_selection asks for
+                // the same five combinations.
+                case "UNION": return SelectionCombinationMethod.Add;
+                case "DIFFERENCE": return SelectionCombinationMethod.Subtract;
+                case "INTERSECT": return SelectionCombinationMethod.And;
+                case "SYMDIFFERENCE": return SelectionCombinationMethod.XOR;
                 default: return SelectionCombinationMethod.New;
             }
         }
@@ -425,6 +437,63 @@ namespace ArcGISProMCP.Commands
                 ["method"] = method,
                 ["where"] = filter.WhereClause,
                 ["selected_count"] = selection?.GetCount() ?? 0,
+            };
+        }
+
+        private static object SetSelection(Params parameters)
+        {
+            var layer = SelectableLayer(parameters);
+            var oids = parameters.GetIntList("oids")
+                ?? throw new ArgumentException("oids must be a list of ObjectIDs.");
+            var method = parameters.GetString("method", "NEW");
+
+            var filter = new QueryFilter { ObjectIDs = oids.Select(id => (long)id).ToList() };
+            var selection = layer.Select(filter, ParseMethod(method));
+
+            var selected = selection?.GetCount() ?? 0;
+            var result = new Dictionary<string, object>
+            {
+                ["layer"] = layer.Name,
+                ["method"] = method,
+                ["requested"] = oids.Count,
+                ["selected_count"] = selected,
+            };
+            // Asking for an ObjectID the layer does not have selects nothing
+            // and still reports success, which reads as a silent failure
+            // unless the shortfall is spelled out.
+            if (method.StartsWith("NEW", StringComparison.OrdinalIgnoreCase)
+                && selected < oids.Count)
+                result["note"] = $"{oids.Count - selected} of the ObjectIDs given are "
+                                 + $"not in '{layer.Name}'.";
+            return result;
+        }
+
+        private static object ZoomToSelection(Params parameters)
+        {
+            var map = MapHelpers.ResolveMap(parameters);
+            var view = MapHelpers.RequireActiveView(map);
+            var name = parameters.GetString("layer_name");
+
+            var layers = string.IsNullOrWhiteSpace(name)
+                ? map.GetLayersAsFlattenedList().OfType<BasicFeatureLayer>().ToList()
+                : new List<BasicFeatureLayer> { MapHelpers.RequireFeatureLayer(map, name) };
+
+            var selected = layers.Sum(l => l.SelectionCount);
+            if (selected == 0)
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(name)
+                        ? $"Nothing is selected in map '{map.Name}'."
+                        : $"Nothing is selected in '{name}'.");
+
+            view.ZoomToSelected();
+
+            return new Dictionary<string, object>
+            {
+                ["map"] = map.Name,
+                ["layers"] = layers.Where(l => l.SelectionCount > 0)
+                                   .Select(l => l.Name).ToList(),
+                ["selected_count"] = selected,
+                ["scale"] = view.Camera?.Scale,
             };
         }
 

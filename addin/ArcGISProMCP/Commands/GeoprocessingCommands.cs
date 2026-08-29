@@ -40,6 +40,9 @@ namespace ArcGISProMCP.Commands
             CommandRouter.Register("list_toolboxes", Group,
                 "List the toolbox aliases tools are grouped under.", ListToolboxes,
                 runOnMct: false);
+            CommandRouter.RegisterAsync("run_python_toolbox_tool", Group,
+                "Run a tool from a .pyt, .atbx or .tbx toolbox on disk.",
+                RunToolboxToolAsync);
             CommandRouter.Register("check_extension", Group,
                 "Check an ArcGIS extension licence.", CheckExtension, runOnMct: false);
             CommandRouter.Register("get_messages", Group,
@@ -162,8 +165,7 @@ namespace ArcGISProMCP.Commands
                 values.AddRange(slots.Take(lastUsed + 1));
             }
 
-            var flags = GPExecuteToolFlags.Default;
-            if (parameters.GetBool("add_to_map")) flags |= GPExecuteToolFlags.AddOutputsToMap;
+            var flags = FlagsFor(parameters.GetBool("add_to_map"));
 
             var environments = MapCommands.Environment.Count > 0
                 ? Geoprocessing.MakeEnvironmentArray(
@@ -207,6 +209,80 @@ namespace ArcGISProMCP.Commands
             return data;
         }
 
+        /// <summary>
+        /// A tool in a toolbox on disk is addressed by the toolbox path plus
+        /// the tool name. No parameter-order table exists for one, so the
+        /// values have to come in positionally.
+        /// </summary>
+        private static async Task<object> RunToolboxToolAsync(Params parameters)
+        {
+            var toolboxPath = parameters.Require("toolbox_path");
+            var toolName = parameters.Require("tool_name");
+
+            if (!File.Exists(toolboxPath) && !Directory.Exists(toolboxPath))
+                throw new ArgumentException($"No toolbox at {toolboxPath}");
+
+            var positional = parameters.Raw("args");
+            var values = new List<object>();
+            if (positional.ValueKind == JsonValueKind.Array)
+            {
+                values.AddRange(positional.EnumerateArray().Select(ValueOf));
+            }
+            else
+            {
+                var named = parameters.GetObject("parameters");
+                if (named != null && named.Count > 0)
+                    // A custom toolbox publishes no parameter order this add-in
+                    // can read, so named values would have to be guessed into
+                    // slots. Saying so beats putting them in the wrong ones.
+                    throw new ArgumentException(
+                        "Tools from a toolbox on disk take positional values: pass "
+                        + "args as a list in the tool's own parameter order. Named "
+                        + "parameters work only for the built-in tools, whose order "
+                        + "is known.");
+            }
+
+            var started = DateTime.Now;
+            var result = await Geoprocessing.ExecuteToolAsync(
+                Path.Combine(toolboxPath, toolName),
+                Geoprocessing.MakeValueArray(values.ToArray()),
+                null, null, null,
+                FlagsFor(parameters.GetBool("add_to_map"))).ConfigureAwait(false);
+            LastResult = result;
+
+            if (result.IsFailed)
+            {
+                var messages = result.ErrorMessages != null && result.ErrorMessages.Any()
+                    ? string.Join("; ", result.ErrorMessages.Select(m => m.Text))
+                    : "the tool reported no error text";
+                throw new InvalidOperationException($"{toolName} failed: {messages}");
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["toolbox"] = toolboxPath,
+                ["tool"] = toolName,
+                ["outputs"] = result.Values?.ToList(),
+                ["return_value"] = result.ReturnValue,
+                ["elapsed_seconds"] = Math.Round((DateTime.Now - started).TotalSeconds, 2),
+                ["messages"] = result.Messages?.Select(m => m.Text).Take(50).ToList(),
+            };
+        }
+
+        /// <summary>
+        /// Which flags a run needs. GPExecuteToolFlags.Default already includes
+        /// AddOutputsToMap -- "adds outputs to map and refreshes project items"
+        /// -- so ORing AddOutputsToMap onto it does nothing, and add_to_map:false
+        /// silently added the output anyway. Every intermediate result a
+        /// workflow produced ended up in the table of contents because of it.
+        /// </summary>
+        private static GPExecuteToolFlags FlagsFor(bool addToMap)
+        {
+            return addToMap
+                ? GPExecuteToolFlags.Default
+                : GPExecuteToolFlags.RefreshProjectItems | GPExecuteToolFlags.AddToHistory;
+        }
+
         private static IGPResult LastResult;
 
         /// <summary>
@@ -239,8 +315,7 @@ namespace ArcGISProMCP.Commands
                 lastUsed = i;
             }
 
-            var flags = GPExecuteToolFlags.Default;
-            if (addToMap) flags |= GPExecuteToolFlags.AddOutputsToMap;
+            var flags = FlagsFor(addToMap);
 
             var result = await Geoprocessing.ExecuteToolAsync(
                 toolName,

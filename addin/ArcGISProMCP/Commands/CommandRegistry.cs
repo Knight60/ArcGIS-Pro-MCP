@@ -19,6 +19,7 @@ namespace ArcGISProMCP.Commands
             EditCommands.Register();
             GpWrapperCommands.Register();
             ViewCommands.Register();
+            RasterCommands.Register();
             GeoprocessingCommands.Register();
         }
     }

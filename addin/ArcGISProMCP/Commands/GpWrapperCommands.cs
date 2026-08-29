@@ -167,6 +167,89 @@ namespace ArcGISProMCP.Commands
                         ?? Path.Combine(Project.Current?.DefaultGeodatabasePath ?? "",
                                         "raster_samples"),
                 });
+
+            Wrap("apply_symbology_from_layer", "symbology",
+                "Copy symbology from a .lyrx file or another layer.",
+                "management.ApplySymbologyFromLayer", p => new Dictionary<string, object>
+                {
+                    ["in_layer"] = Target(p),
+                    ["in_symbology_layer"] = p.Require("symbology_source"),
+                    ["update_symbology"] = p.GetString("update_symbology", "DEFAULT"),
+                });
+
+            Wrap("save_layer_file", "symbology",
+                "Save a layer with its symbology to a .lyrx file.",
+                "management.SaveToLayerFile", p => new Dictionary<string, object>
+                {
+                    ["in_layer"] = Target(p),
+                    ["out_layer"] = p.Require("output_path"),
+                    ["is_relative_path"] = p.GetString("relative_paths", "ABSOLUTE"),
+                });
+
+            RegisterAddFields();
+        }
+
+        /// <summary>
+        /// AddFields takes one value table, where every field is a row of
+        /// space-separated values -- and a column out of place there would put
+        /// a length where an alias belongs, silently. So this calls AddField
+        /// once per field, by name. Slower for a long list, and worth it.
+        /// </summary>
+        private static void RegisterAddFields()
+        {
+            CommandRouter.RegisterAsync("add_fields", "schema",
+                "Add several fields in one call.", async parameters =>
+                {
+                    var target = Target(parameters);
+                    var added = new List<string>();
+
+                    foreach (var field in parameters.GetObjectList("fields"))
+                    {
+                        var name = field.Require("name");
+                        var result = await GeoprocessingCommands.RunNamedAsync(
+                            "management.AddField",
+                            new Dictionary<string, object>
+                            {
+                                ["in_table"] = target,
+                                ["field_name"] = name,
+                                ["field_type"] = field.GetString("type", "TEXT"),
+                                ["field_precision"] = field.GetString("precision"),
+                                ["field_scale"] = field.GetString("scale"),
+                                ["field_length"] = field.GetString("length"),
+                                ["field_alias"] = field.GetString("alias"),
+                                ["field_is_nullable"] = field.GetString("nullable", "NULLABLE"),
+                                ["field_domain"] = field.GetString("domain"),
+                            },
+                            addToMap: false).ConfigureAwait(false);
+
+                        if (result.IsFailed)
+                        {
+                            var messages = result.ErrorMessages != null
+                                           && result.ErrorMessages.Any()
+                                ? string.Join("; ", result.ErrorMessages.Select(m => m.Text))
+                                : "the tool reported no error text";
+                            // Half the fields may already exist by now, so say
+                            // which -- a blind retry would fail on those.
+                            throw new InvalidOperationException(
+                                $"add_fields stopped at '{name}': {messages}. Fields "
+                                + "added before it: "
+                                + (added.Count == 0 ? "(none)" : string.Join(", ", added)));
+                        }
+                        added.Add(name);
+                    }
+
+                    if (added.Count == 0)
+                        throw new ArgumentException(
+                            "fields must be a list, e.g. "
+                            + "[{\"name\": \"AREA_HA\", \"type\": \"DOUBLE\"}]");
+
+                    return new Dictionary<string, object>
+                    {
+                        ["table"] = target,
+                        ["added"] = added,
+                        ["count"] = added.Count,
+                    };
+                });
         }
 
         /// <summary>The layer name or dataset path a command acts on.</summary>

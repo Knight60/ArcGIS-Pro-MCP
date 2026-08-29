@@ -1,4 +1,6 @@
 using System;
+using System.Threading.Tasks;
+using System.Threading;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -16,6 +18,9 @@ namespace ArcGISProMCP.Commands
 
         public static void Register()
         {
+            CommandRouter.RegisterAsync("run_batch", Group,
+                "Run several commands in one round trip.", RunBatchAsync);
+
             // Answered without touching the object model, so it stays
             // responsive even when ArcGIS Pro is busy.
             CommandRouter.Register("ping", Group,
@@ -233,6 +238,97 @@ namespace ArcGISProMCP.Commands
                 ["ok"] = ok,
                 ["command_count"] = CommandRouter.Count,
             };
+        }
+
+        /// <summary>
+        /// Runs a list of commands in order. Each step is dispatched exactly as
+        /// if it had arrived on its own, so a step this add-in does not
+        /// implement still reaches the Python bridge.
+        ///
+        /// The saving is the round trip, not the dispatch: a command costs
+        /// milliseconds here, and the socket round trip costs more than that.
+        /// </summary>
+        private static async Task<object> RunBatchAsync(Params parameters)
+        {
+            if (Interlocked.Exchange(ref _inBatch, 1) == 1)
+                throw new InvalidOperationException(
+                    "run_batch cannot contain another run_batch.");
+
+            try
+            {
+                var continueOnError = parameters.GetBool("continue_on_error");
+                var results = new List<Dictionary<string, object>>();
+                var failed = 0;
+                var step = 0;
+
+                foreach (var item in parameters.GetObjectList("commands"))
+                {
+                    step++;
+                    var command = item.Require("command");
+                    var stepParameters = item.Raw("params");
+
+                    var entry = new Dictionary<string, object>
+                    {
+                        ["step"] = step,
+                        ["command"] = command,
+                    };
+
+                    try
+                    {
+                        entry["data"] = await CommandRouter.DispatchAsync(
+                            command, new Params(stepParameters), stepParameters)
+                            .ConfigureAwait(false);
+                        entry["success"] = true;
+                    }
+                    catch (Exception exception)
+                    {
+                        failed++;
+                        entry["success"] = false;
+                        entry["error"] = Unwrap(exception).Message;
+                        results.Add(entry);
+
+                        if (!continueOnError)
+                            return new Dictionary<string, object>
+                            {
+                                ["results"] = results,
+                                ["completed"] = results.Count,
+                                ["failed"] = failed,
+                                ["stopped_at"] = step,
+                                ["message"] = $"Step {step} ({command}) failed and the "
+                                              + "batch stopped. Pass continue_on_error "
+                                              + "to run the rest anyway.",
+                            };
+                        continue;
+                    }
+
+                    results.Add(entry);
+                }
+
+                return new Dictionary<string, object>
+                {
+                    ["results"] = results,
+                    ["completed"] = results.Count,
+                    ["failed"] = failed,
+                };
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _inBatch, 0);
+            }
+        }
+
+        private static int _inBatch;
+
+        /// <summary>
+        /// An awaited handler surfaces as an AggregateException whose message
+        /// says nothing useful; the caller wants the message underneath.
+        /// </summary>
+        private static Exception Unwrap(Exception exception)
+        {
+            while (exception is AggregateException aggregate
+                   && aggregate.InnerExceptions.Count == 1)
+                exception = aggregate.InnerExceptions[0];
+            return exception;
         }
     }
 }

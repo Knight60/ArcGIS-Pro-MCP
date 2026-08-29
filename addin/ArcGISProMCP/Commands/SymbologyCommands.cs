@@ -72,7 +72,7 @@ namespace ArcGISProMCP.Commands
             }
         }
 
-        private static ClassificationMethod ParseClassification(string name)
+        internal static ClassificationMethod ParseClassification(string name)
         {
             switch ((name ?? "NaturalBreaks").ToUpperInvariant())
             {
@@ -84,7 +84,7 @@ namespace ArcGISProMCP.Commands
             }
         }
 
-        private static CIMColorRamp FindColorRamp(string name)
+        internal static CIMColorRamp FindColorRamp(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return null;
             foreach (var style in Project.Current.GetItems<StyleProjectItem>())

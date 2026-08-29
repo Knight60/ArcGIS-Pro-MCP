@@ -47,6 +47,9 @@ namespace ArcGISProMCP.Commands
                 "Remove an element from a layout.", DeleteElement);
             CommandRouter.Register("export_layout", Group,
                 "Export a layout to PDF / PNG / JPEG / TIFF.", ExportLayout);
+            CommandRouter.Register("export_map_series", Group,
+                "Export a layout's map series to a multi-page PDF.", ExportMapSeries);
+
             CommandRouter.Register("preview_layout", Group,
                 "Render a layout to a temporary image and return it inline.",
                 PreviewLayout);
@@ -479,6 +482,54 @@ namespace ArcGISProMCP.Commands
                 result["image_format"] = extension == ".png" ? "png" : "jpeg";
             }
             return result;
+        }
+
+        /// <summary>
+        /// A map series belongs to the layout, so this exports the series the
+        /// layout already has rather than defining one.
+        /// </summary>
+        private static object ExportMapSeries(Params parameters)
+        {
+            var layout = FindLayout(parameters);
+            var series = layout.MapSeries
+                ?? throw new InvalidOperationException(
+                    $"Layout '{layout.Name}' has no map series. Set one up in the "
+                    + "layout's properties first -- this exports an existing series, "
+                    + "it does not define one.");
+
+            var path = parameters.Require("output_path");
+            if (!Path.IsPathRooted(path))
+                path = Path.Combine(Project.Current.HomeFolderPath, path);
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+            var dpi = parameters.GetInt("dpi", 200);
+            var pageRange = parameters.GetString("page_range");
+            var options = new MapSeriesExportOptions
+            {
+                ExportPages = string.IsNullOrWhiteSpace(pageRange)
+                    ? ExportPages.All
+                    : ExportPages.Custom,
+                CustomPages = pageRange,
+                // One PDF holding every page is what a map book is; the
+                // alternative writes a separate file per page.
+                ExportFileOptions = ExportFileOptions.ExportAsSinglePDF,
+            };
+
+            var format = new PDFFormat { OutputFileName = path, Resolution = dpi };
+            if (!format.ValidateOutputFilePath())
+                throw new InvalidOperationException($"ArcGIS Pro will not write to {path}");
+
+            layout.Export(format, options);
+
+            return new Dictionary<string, object>
+            {
+                ["layout"] = layout.Name,
+                ["exported"] = path,
+                ["pages"] = string.IsNullOrWhiteSpace(pageRange) ? "all" : pageRange,
+                ["page_count"] = series.PageCount,
+                ["dpi"] = dpi,
+            };
         }
 
         private static object PreviewLayout(Params parameters)
