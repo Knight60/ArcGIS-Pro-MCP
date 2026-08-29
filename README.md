@@ -393,5 +393,37 @@ Built by **Pisut Nakmuenwai** ([@Knight60](https://github.com/Knight60)).
 Released under the [MIT Licence](LICENSE) — use it, change it, ship it in
 something commercial; just keep the copyright notice.
 
-Not affiliated with or endorsed by Esri. ArcGIS and ArcGIS Pro are trademarks
-of Esri.
+---
+
+## Disclaimer
+
+This software is provided **"as is", without warranty of any kind**, express or
+implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose, and non-infringement. In no event shall the
+author or copyright holder be liable for any claim, damages, or other
+liability, whether in an action of contract, tort, or otherwise, arising from
+or in connection with the software or its use. The full terms are in
+[LICENSE](LICENSE).
+
+Two properties of this software deserve stating plainly rather than being left
+to the licence, because they are what it is for rather than defects in it:
+
+- It **executes commands against a live ArcGIS Pro session**, including
+  operations that permanently alter or delete datasets, project files, and
+  geodatabase contents. The tools marked ⚠️ in the table above are the ones
+  that do so.
+- Those commands are **issued by an AI assistant**, whose output is not
+  deterministic and is not reviewed before it runs. `execute_arcpy_code`
+  executes arbitrary Python inside ArcGIS Pro with the privileges of the
+  signed-in user.
+
+You remain responsible for your data and for the consequences of any operation
+performed through this software. Back up anything you cannot afford to lose,
+work on copies where practical, and verify results before relying on them. Use
+against production data, or against data you cannot restore, is entirely at
+your own risk.
+
+This project is an independent work. It is **not affiliated with, endorsed by,
+sponsored by, or supported by Esri**, and it is not a supported ArcGIS product.
+ArcGIS and ArcGIS Pro are trademarks of Esri. Your use of ArcGIS Pro remains
+governed by your own licence agreement with Esri, and nothing here modifies it.
