@@ -80,6 +80,52 @@ tool catalog, tests และ CLI ใช้ต่อได้โดยไม่�
 
 ผู้ใช้ปลายทางแค่ดับเบิลคลิกไฟล์ `.esriAddinX` ครั้งเดียว
 
+## การเซ็น add-in (add-in security)
+
+ArcGIS Pro ตัดสินว่าจะโหลด add-in ไหนจาก
+`HKCU\SOFTWARE\ESRI\ArcGISPro\Settings\BlockAddIns`:
+
+| ค่า | ความหมาย |
+|---|---|
+| `0` | โหลดทุกอัน (ที่ add-in ยังไม่เซ็นต้องใช้) |
+| `1` | โหลดเฉพาะที่เซ็นโดย trusted publisher |
+| `2` | โหลดเฉพาะของ Esri |
+
+เปิดเป็น `0` ทั้งเครื่องเพื่อ add-in ตัวเดียวไม่คุ้ม ใช้ script นี้แทน:
+
+```powershell
+# ครั้งแรก: สร้าง cert, เซ็น, trust, แล้วตั้ง Pro เป็น 1
+.\scripts\sign_addin.ps1 -CreateCertificate -Trust -SetProSecurity
+
+# build ครั้งต่อ ๆ ไป: cert มีแล้ว เซ็นอย่างเดียว
+.\scripts\sign_addin.ps1
+
+# ยกเลิก trust
+.\scripts\sign_addin.ps1 -Untrust
+```
+
+`.esriAddinX` เป็น zip จึงฝัง Authenticode แบบ `.exe` ไม่ได้ — Pro เซ็นมันเป็น
+OPC package และมีเครื่องมือให้อยู่แล้วที่ `ArcGISSignAddIn.exe` ใน bin ของ Pro
+(เรียกเปล่า ๆ จะขึ้น wizard แต่รับ `/cert-thumbprint:` `/c:` `/p:` `/n:` `/s` ได้ด้วย
+ซึ่ง script ใช้ทางนี้)
+
+### ⚠️ เครื่องอื่นจะไม่เชื่อ cert นี้
+
+self-signed cert เชื่อเฉพาะ **user นี้ บนเครื่องนี้** เท่านั้น เพราะ `-Trust`
+ติดตั้งลง `CurrentUser\Root` + `CurrentUser\TrustedPublisher` ของเครื่องที่รัน
+
+ถ้าเอา `.esriAddinX` ไปลงเครื่องอื่น เขามีทางเลือกคือ
+
+1. ตั้ง `BlockAddIns = 0` บนเครื่องเขา (ง่ายสุด เหมาะกับใช้ภายใน)
+2. รัน `sign_addin.ps1 -CreateCertificate -Trust` บนเครื่องเขาเอง แล้วเซ็นใหม่
+   ด้วย cert ของเขา
+3. ถ้าจะแจกจริงจัง ต้องซื้อ **code-signing certificate จาก CA สาธารณะ**
+   (DigiCert, Sectigo ฯลฯ) แล้วเซ็นด้วยตัวนั้น — เครื่องปลายทางจะเชื่อทันที
+   โดยไม่ต้องติดตั้งอะไรเพิ่ม
+
+**อย่าส่ง `.pfx` self-signed ให้คนอื่นติดตั้งเป็น trusted root** — เท่ากับให้เขา
+เชื่อทุกอย่างที่เซ็นด้วย key นั้น
+
 ## เวอร์ชันของ ArcGIS Pro
 
 **ต้อง build แยกต่อ .NET generation ของ Pro** — ไม่ใช่เพราะ API เปลี่ยน แต่เพราะ
