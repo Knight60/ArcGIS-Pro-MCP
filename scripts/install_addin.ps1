@@ -88,30 +88,26 @@ function Get-AddInVersion($path) {
     }
 }
 
-function Confirm-Action($question, $default = 1) {
-    # PromptForChoice throws where there is no console to prompt on -- a
-    # scheduled task, a CI job -- and a installer that hangs there is worse
-    # than one that declines and says which switch to pass.
+function Choose($question, $options) {
+    # The options name the action -- "Install", "Uninstall", "Cancel" -- rather
+    # than Yes and No. Asked "Uninstall it? [Y/N]", someone who came to install
+    # cannot tell which answer gets them what they came for, and the wrong
+    # guess removes a working add-in.
+    #
+    # PromptForChoice throws where there is no console to prompt on: a scheduled
+    # task, a CI job. Hanging there would be worse than declining and saying
+    # which switch says it outright.
     try {
-        $yes = New-Object Management.Automation.Host.ChoiceDescription "&Yes"
-        $no = New-Object Management.Automation.Host.ChoiceDescription "&No"
-        $choices = [Management.Automation.Host.ChoiceDescription[]]($yes, $no)
-        return $Host.UI.PromptForChoice("", $question, $choices, $default) -eq 0
+        $choices = [Management.Automation.Host.ChoiceDescription[]](
+            $options | ForEach-Object {
+                New-Object Management.Automation.Host.ChoiceDescription $_
+            })
+        Say ""
+        return $Host.UI.PromptForChoice("", $question, $choices, 0)
     } catch {
-        Warn "Nothing to prompt on. Pass -Reinstall or -Uninstall to say which you meant."
-        return $false
-    }
-}
-
-function Remove-EmptyAddInFolders {
-    # RegisterAddIn.exe unpacks into a folder named after the add-in id, so
-    # removing the file leaves that folder behind looking like something is
-    # still installed.
-    if (-not (Test-Path $target)) { return }
-    Get-ChildItem $target -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-        if (-not (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue)) {
-            Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        Warn "There is no console to ask on."
+        Warn "Pass -Reinstall to install, or -Uninstall to remove."
+        return -1
     }
 }
 
@@ -125,16 +121,26 @@ function Find-InstalledCopies {
              Where-Object { $_.Name -like "ArcGISProMCP*" })
 }
 
-if ($Uninstall) {
-    $copies = Find-InstalledCopies
-    if (-not $copies) { Write-Host "Nothing to uninstall in $target"; exit 0 }
+function Uninstall-AddIn($copies) {
     foreach ($copy in $copies) {
         Remove-Item $copy.FullName -Force
-        Write-Host "Removed $($copy.FullName)"
+        Good "Removed $($copy.FullName)"
     }
     Remove-EmptyAddInFolders
-    Write-Host "Restart ArcGIS Pro. The certificate, if one was imported, is left alone;"
-    Write-Host "remove it with scripts\sign_addin.ps1 -Untrust."
+    Say ""
+    Good "Uninstalled. Restart ArcGIS Pro and the MCP tab will be gone."
+    Say  "Run this installer again to put it back."
+    Say  "Any certificate imported earlier is left in place; remove it with"
+    Say  "scripts\sign_addin.ps1 -Untrust."
+}
+
+if ($Uninstall) {
+    $copies = Find-InstalledCopies
+    if (-not $copies) {
+        Say "ArcGIS Pro MCP is not installed. Nothing to uninstall."
+        exit 0
+    }
+    Uninstall-AddIn $copies
     exit 0
 }
 
@@ -154,47 +160,53 @@ if (-not $AddInPath -or -not (Test-Path $AddInPath)) {
 }
 $AddInPath = (Resolve-Path $AddInPath).Path
 
-# --- already installed? ------------------------------------------------------
+# --- install or uninstall? ---------------------------------------------------
 
-# Running the installer twice is how people uninstall things, so the second run
-# offers exactly that -- the same shape as the client buttons on the ribbon,
-# where one button both connects and disconnects. An upgrade is told apart from
-# a repeat by the version inside the package, so a newer download is never
-# mistaken for a request to remove what is there.
+# One installer does both jobs, so it says which state it found before asking
+# anything, and the question names the action rather than offering Yes and No.
 $installed = Find-InstalledCopies
-if ($installed -and -not $Reinstall) {
-    $incoming = Get-AddInVersion $AddInPath
-    $current = Get-AddInVersion $installed[0].FullName
+$incoming = Get-AddInVersion $AddInPath
+$current = if ($installed) { Get-AddInVersion $installed[0].FullName } else { $null }
 
-    Say ""
-    Say "Already installed: version $(if ($current) { $current } else { 'unknown' })"
-    Say "  $($installed[0].FullName)"
+Say ""
+if ($installed) {
+    Good "ArcGIS Pro MCP $current is INSTALLED on this machine."
+    Say  "  $($installed[0].FullName)"
     if ($installed.Count -gt 1) {
-        Warn "  ...and $($installed.Count - 1) more copy(ies), which is one too many."
+        Warn "  ...and $($installed.Count - 1) more copy(ies). Two copies of one"
+        Warn "  add-in is one too many: ArcGIS Pro loads one and ignores the rest."
     }
+} else {
+    Say "ArcGIS Pro MCP is NOT INSTALLED on this machine."
+    Say "  This installer carries version $incoming."
+}
 
-    if ($current -and $incoming -and $current -ne $incoming) {
-        Say "This installer carries version $incoming."
-        if (-not (Confirm-Action "Upgrade $current to $incoming?" 0)) {
-            Say "Nothing changed."
-            exit 0
-        }
+if (-not $Reinstall) {
+    if (-not $installed) {
+        # Nothing there: the only question is whether to put it there.
+        $answer = Choose "Install ArcGIS Pro MCP $incoming?" @(
+            "&Install    - copy it to $target",
+            "&Cancel     - change nothing and quit")
+        if ($answer -ne 0) { Say ""; Say "Cancelled. Nothing was changed."; exit 0 }
+
+    } elseif ($current -and $incoming -and $current -ne $incoming) {
+        # A different version: upgrading is the likely intent, removing is not.
+        $answer = Choose "This installer carries version $incoming. What would you like to do?" @(
+            "&Upgrade    - replace $current with $incoming",
+            "&Remove     - uninstall $current and install nothing",
+            "&Cancel     - change nothing and quit")
+        if ($answer -eq 1) { Uninstall-AddIn $installed; exit 0 }
+        if ($answer -ne 0) { Say ""; Say "Cancelled. Nothing was changed."; exit 0 }
+
     } else {
-        Say "This installer carries the same version."
-        if (Confirm-Action "Uninstall it?") {
-            foreach ($copy in $installed) {
-                Remove-Item $copy.FullName -Force
-                Good "Removed $($copy.FullName)"
-            }
-            Remove-EmptyAddInFolders
-            Say ""
-            Say "Restart ArcGIS Pro. Run this again to install it back."
-            Say "Any certificate imported earlier is left alone; remove it with"
-            Say "scripts\sign_addin.ps1 -Untrust."
-            exit 0
-        }
-        Say "Nothing changed. Pass -Reinstall to install over it anyway."
-        exit 0
+        # Same version already there: reinstalling achieves nothing, so removing
+        # is the only thing worth offering.
+        $answer = Choose "Version $current is already installed. What would you like to do?" @(
+            "&Uninstall  - remove it from this machine",
+            "&Keep       - leave it installed and quit",
+            "&Reinstall  - install this copy over it")
+        if ($answer -eq 0) { Uninstall-AddIn $installed; exit 0 }
+        if ($answer -ne 2) { Say ""; Say "Left as it is. Nothing was changed."; exit 0 }
     }
 }
 
