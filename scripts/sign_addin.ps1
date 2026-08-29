@@ -17,12 +17,17 @@
     arguments it opens a wizard; it also takes /cert-thumbprint:, /c:, /p:,
     /n: and /s (silent), which is what this script uses.
 
-    Signing alone changes nothing. Pro trusts the signature only if the
-    certificate is in the Trusted Publishers store, and a self-signed
-    certificate must also be in Trusted Root before it will chain. -Trust does
-    both, for the current user only. That is a real decision: anything else
-    signed by this certificate becomes trusted too, so keep the .pfx private,
-    and see -Untrust to undo it.
+    Signing alone changes nothing: the certificate has to be trusted too.
+    Tested against Pro 3.7.1, what it actually requires is narrower than the
+    setting's wording suggests -- the signature must chain to a trusted root,
+    and the certificate must not have expired. It does not check the Code
+    Signing EKU, and it does not require the publisher to be in Trusted
+    Publishers. -Trust adds the certificate to both Root and Trusted
+    Publishers anyway, for the current user only: Root is what Pro needs, and
+    Trusted Publishers is where anyone looking for it would expect to find it.
+
+    That is a real decision. Anything else signed by this certificate becomes
+    trusted too, so keep the .pfx private, and see -Untrust to undo it.
 
 .PARAMETER AddInPath
     The .esriAddinX to sign. Defaults to the Release build.
@@ -42,6 +47,15 @@
 
 .PARAMETER Untrust
     Remove the certificate from those stores again.
+
+.PARAMETER ValidYears
+    How long a newly created certificate lasts. Long by default, on purpose:
+    ArcGIS Pro rejects an add-in whose signing certificate has expired, and the
+    signature carries no RFC 3161 timestamp -- only a SignatureTime the signer
+    wrote itself -- so there is nothing to prove the signing happened while the
+    certificate was valid. The signature dies with the certificate, and every
+    copy of the add-in stops loading on the same day. A certificate you issue
+    yourself gains nothing from a short life.
 
 .PARAMETER SetProSecurity
     Set BlockAddIns to 1 -- signed by a trusted publisher only. Without this
@@ -63,7 +77,7 @@ param(
     [switch]$Trust,
     [switch]$Untrust,
     [switch]$SetProSecurity,
-    [int]$ValidYears = 5
+    [int]$ValidYears = 20
 )
 
 $ErrorActionPreference = "Stop"
