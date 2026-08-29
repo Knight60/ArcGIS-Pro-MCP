@@ -20,23 +20,25 @@ not a copy of it.
 
 ## Install
 
-Download from [Releases](https://github.com/Knight60/ArcGIS-Pro-MCP/releases),
-or take the current build straight from
-[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist) — it is
-committed, because GitHub Actions has no ArcGIS Pro to build against and a
-release can only be produced on a machine that has it.
-
-Either way, pick one of these two:
+Take either file from
+[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist). It is
+committed to the repository rather than attached to a release, because GitHub
+Actions has no ArcGIS Pro to build against — a build only exists if someone
+with Pro installed produces it, and committing it keeps the download the same
+age as the source beside it.
 
 ### The add-in on its own
 
-Double-click **`ArcGISProMCP.esriAddinX`**. ArcGIS Pro's own installer takes it
-from there. Restart Pro and the **MCP** tab appears.
+Download
+**[`ArcGISProMCP.esriAddinX`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/ArcGISProMCP.esriAddinX)**
+and double-click it. ArcGIS Pro's own installer takes it from there. Restart
+Pro and the **MCP** tab appears.
 
 ### Or the installer, if that does not work
 
-**`Install-ArcGISProMCP.ps1`** is one self-contained file — the add-in is
-inside it, so there is nothing else to download.
+**[`Install-ArcGISProMCP.ps1`](https://github.com/Knight60/ArcGIS-Pro-MCP/raw/main/dist/Install-ArcGISProMCP.ps1)**
+is one self-contained file — the add-in is inside it, so there is nothing else
+to download.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File Install-ArcGISProMCP.ps1

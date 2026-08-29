@@ -1,7 +1,7 @@
 # Building from source
 
-You do not need to build this to use it. Download the installer from
-[Releases](https://github.com/Knight60/ArcGIS-Pro-MCP/releases) and see
+You do not need to build this to use it. The built add-in and installer are in
+[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist); see
 [README.md](README.md).
 
 This page is for changing the code or producing your own build.
