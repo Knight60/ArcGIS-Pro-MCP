@@ -12,3 +12,13 @@ ArcGISMCP.*.pyt.xml
 # C# add-in build output
 addin/**/bin/
 addin/**/obj/
+
+# C# test project build output
+tests/**/bin/
+tests/**/obj/
+
+# Release artifacts produced by scripts/build.ps1
+dist/
+
+# Backups this project's own tooling writes
+*.arcgis-mcp.bak

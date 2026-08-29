@@ -32,6 +32,13 @@
     Set add-in security to 0 (load everything) for the current user. Simpler
     than importing a certificate, and weaker: any add-in will load.
 
+.PARAMETER Uninstall
+    Remove every copy of the add-in this finds, and stop.
+
+.PARAMETER Reinstall
+    Install over an existing copy of the same version without asking. Running
+    this with nothing already installed does the same thing either way.
+
 .EXAMPLE
     .\install.ps1
     # Copies the add-in and reports whether Pro will load it.
@@ -44,7 +51,9 @@
 param(
     [string]$AddInPath,
     [switch]$TrustPublisher,
-    [switch]$AllowAllAddIns
+    [switch]$AllowAllAddIns,
+    [switch]$Uninstall,
+    [switch]$Reinstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +61,69 @@ $ErrorActionPreference = "Stop"
 function Say($text) { Write-Host $text }
 function Warn($text) { Write-Host $text -ForegroundColor Yellow }
 function Good($text) { Write-Host $text -ForegroundColor Green }
+
+# --- everywhere ArcGIS Pro looks ---------------------------------------------
+
+# GetFolderPath, not %USERPROFILE%\Documents: with OneDrive's folder backup on
+# they are different directories, and the add-in lands where Pro will never
+# look for it.
+$documents = [Environment]::GetFolderPath("MyDocuments")
+$target = Join-Path $documents "ArcGIS\AddIns\ArcGISPro"
+
+function Get-AddInVersion($path) {
+    # The version lives in Config.daml at the root of the package, which is a
+    # plain zip. Reading it beats trusting a file name or a date.
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($path)
+        try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq "Config.daml" }
+            if (-not $entry) { return $null }
+            $reader = New-Object IO.StreamReader($entry.Open())
+            try { $daml = [xml]$reader.ReadToEnd() } finally { $reader.Close() }
+            return $daml.ArcGIS.AddInInfo.version
+        } finally { $zip.Dispose() }
+    } catch {
+        return $null
+    }
+}
+
+function Confirm-Action($question, $default = 1) {
+    # PromptForChoice throws where there is no console to prompt on -- a
+    # scheduled task, a CI job -- and a installer that hangs there is worse
+    # than one that declines and says which switch to pass.
+    try {
+        $yes = New-Object Management.Automation.Host.ChoiceDescription "&Yes"
+        $no = New-Object Management.Automation.Host.ChoiceDescription "&No"
+        $choices = [Management.Automation.Host.ChoiceDescription[]]($yes, $no)
+        return $Host.UI.PromptForChoice("", $question, $choices, $default) -eq 0
+    } catch {
+        Warn "Nothing to prompt on. Pass -Reinstall or -Uninstall to say which you meant."
+        return $false
+    }
+}
+
+function Find-InstalledCopies {
+    # Pro scans this folder and its subfolders, and RegisterAddIn.exe unpacks
+    # into a subfolder of its own. Two copies of the same add-in id is not an
+    # error anyone is told about -- Pro loads one of them and the other's
+    # changes appear not to take effect, which is a bad afternoon.
+    if (-not (Test-Path $target)) { return @() }
+    return @(Get-ChildItem $target -Recurse -Filter "*.esriAddinX" -ErrorAction SilentlyContinue |
+             Where-Object { $_.Name -like "ArcGISProMCP*" })
+}
+
+if ($Uninstall) {
+    $copies = Find-InstalledCopies
+    if (-not $copies) { Write-Host "Nothing to uninstall in $target"; exit 0 }
+    foreach ($copy in $copies) {
+        Remove-Item $copy.FullName -Force
+        Write-Host "Removed $($copy.FullName)"
+    }
+    Write-Host "Restart ArcGIS Pro. The certificate, if one was imported, is left alone;"
+    Write-Host "remove it with scripts\sign_addin.ps1 -Untrust."
+    exit 0
+}
 
 # --- find the add-in ---------------------------------------------------------
 
@@ -69,15 +141,62 @@ if (-not $AddInPath -or -not (Test-Path $AddInPath)) {
 }
 $AddInPath = (Resolve-Path $AddInPath).Path
 
-# --- where ArcGIS Pro looks --------------------------------------------------
+# --- already installed? ------------------------------------------------------
 
-# GetFolderPath, not %USERPROFILE%\Documents: with OneDrive's folder backup on,
-# Documents is somewhere else entirely and the add-in lands where Pro will
-# never look for it.
-$documents = [Environment]::GetFolderPath("MyDocuments")
-$target = Join-Path $documents "ArcGIS\AddIns\ArcGISPro"
+# Running the installer twice is how people uninstall things, so the second run
+# offers exactly that -- the same shape as the client buttons on the ribbon,
+# where one button both connects and disconnects. An upgrade is told apart from
+# a repeat by the version inside the package, so a newer download is never
+# mistaken for a request to remove what is there.
+$installed = Find-InstalledCopies
+if ($installed -and -not $Reinstall) {
+    $incoming = Get-AddInVersion $AddInPath
+    $current = Get-AddInVersion $installed[0].FullName
+
+    Say ""
+    Say "Already installed: version $(if ($current) { $current } else { 'unknown' })"
+    Say "  $($installed[0].FullName)"
+    if ($installed.Count -gt 1) {
+        Warn "  ...and $($installed.Count - 1) more copy(ies), which is one too many."
+    }
+
+    if ($current -and $incoming -and $current -ne $incoming) {
+        Say "This installer carries version $incoming."
+        if (-not (Confirm-Action "Upgrade $current to $incoming?" 0)) {
+            Say "Nothing changed."
+            exit 0
+        }
+    } else {
+        Say "This installer carries the same version."
+        if (Confirm-Action "Uninstall it?") {
+            foreach ($copy in $installed) {
+                Remove-Item $copy.FullName -Force
+                Good "Removed $($copy.FullName)"
+            }
+            Say ""
+            Say "Restart ArcGIS Pro. Run this again to install it back."
+            Say "Any certificate imported earlier is left alone; remove it with"
+            Say "scripts\sign_addin.ps1 -Untrust."
+            exit 0
+        }
+        Say "Nothing changed. Pass -Reinstall to install over it anyway."
+        exit 0
+    }
+}
+
+# --- install -----------------------------------------------------------------
+
+# Anything already there goes first. Leaving an older copy behind is the
+# failure this has actually caused: Pro picks one, and every change made to
+# the other silently does nothing.
+$stale = Find-InstalledCopies |
+    Where-Object { $_.FullName -ne (Join-Path $target "ArcGISProMCP.esriAddinX") }
+foreach ($copy in $stale) {
+    Remove-Item $copy.FullName -Force
+    Say "Removed an older copy: $($copy.FullName)"
+}
+
 New-Item -ItemType Directory -Force $target | Out-Null
-
 Copy-Item $AddInPath (Join-Path $target "ArcGISProMCP.esriAddinX") -Force
 Good "Installed to $target"
 

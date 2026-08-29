@@ -19,17 +19,17 @@ START = "<!-- TOOLS:START -->"
 END = "<!-- TOOLS:END -->"
 
 GROUP_TITLES = {
-    "Session": "Session / โปรเจกต์",
+    "Session": "Session and project",
     "Layers": "Layer",
-    "Data": "ข้อมูล attribute และการแก้ไข",
+    "Data": "Attributes and editing",
     "Selection": "Selection",
-    "Schema": "Schema / สร้างชุดข้อมูล",
+    "Schema": "Schema and dataset creation",
     "Geoprocessing": "Geoprocessing",
-    "Symbology": "Symbology / Label",
-    "View": "มุมมองแผนที่ / Bookmark",
-    "Layouts": "Layout / แผนที่พร้อมพิมพ์",
+    "Symbology": "Symbology and labels",
+    "View": "Map view and bookmarks",
+    "Layouts": "Layouts and printing",
     "Raster": "Raster",
-    "Catalog": "ค้นหาและสำรวจข้อมูล",
+    "Catalog": "Finding and inspecting data",
     "Utility": "Escape hatch",
 }
 
@@ -41,20 +41,21 @@ def summary(tool):
 
 def render():
     lines = [START, ""]
-    lines.append(f"รวม **{len(CATALOG)} tools** — และทุกอย่างที่เหลือเข้าถึงได้ผ่าน "
-                 "`run_geoprocessing_tool` / `execute_arcpy_code`")
+    lines.append(f"**{len(CATALOG)} tools.** Anything not listed is still reachable "
+                 "through `run_geoprocessing_tool` or `execute_arcpy_code`.")
     for group, tools in groups().items():
         lines.append("")
         lines.append(f"### {GROUP_TITLES.get(group, group)} ({len(tools)})")
         lines.append("")
-        lines.append("| Tool | หน้าที่ |")
+        lines.append("| Tool | What it does |")
         lines.append("|---|---|")
         for tool in tools:
             mark = " ⚠️" if tool.destructive else ""
             image = " 🖼️" if tool.returns_image else ""
             lines.append(f"| `{tool.name}`{mark}{image} | {summary(tool)} |")
     lines.append("")
-    lines.append("⚠️ = เปลี่ยน/ลบข้อมูลจริง &nbsp;&nbsp; 🖼️ = ส่งภาพกลับมาให้ AI ดูได้")
+    lines.append("⚠️ = changes or deletes real data &nbsp;&nbsp; "
+                 "🖼️ = returns an image the AI can look at")
     lines.append("")
     lines.append(END)
     return "\n".join(lines)

@@ -1,273 +1,120 @@
 # ArcGIS Pro MCP
 
-MCP (Model Context Protocol) server สำหรับให้ AI assistant — **Claude Code**,
-**OpenAI Codex CLI** และ **Gemini CLI** — ควบคุม **ArcGIS Pro ที่เปิดอยู่จริง**
-ได้เกือบทุกอย่างที่ทำผ่านหน้าจอได้: จัดการ layer, query และแก้ไขข้อมูล,
-รัน geoprocessing ทุกตัว, ทำ symbology/label, สร้าง layout, export แผนที่
-และ **ดูภาพแผนที่ที่ได้** เพื่อปรับต่อเอง
+Drive a running ArcGIS Pro session from an AI assistant, over the
+[Model Context Protocol](https://modelcontextprotocol.io).
 
-> MCP server that lets AI assistants drive a live ArcGIS Pro session:
-> 110 dedicated tools plus unrestricted access to arcpy.
+It is an ArcGIS Pro add-in that speaks MCP directly. Ask Claude, Codex,
+Antigravity or any other MCP client to open data, run geoprocessing, style
+layers, build layouts and read attributes — against the project you have open,
+not a copy of it.
 
-## ทำอะไรได้บ้าง
-
-| ระดับ | เครื่องมือ | ครอบคลุม |
-|---|---|---|
-| Tool เฉพาะทาง | 110 tools | layer, ข้อมูล, selection, schema, symbology, label, layout, bookmark, raster, ค้นหาข้อมูล |
-| Geoprocessing ทั้งหมด | `run_geoprocessing_tool` + `describe_geoprocessing_tool` | เครื่องมือ arcpy ~2,000 ตัว — AI อ่านพารามิเตอร์ของ tool เองได้ก่อนเรียก |
-| ไม่มีขีดจำกัด | `execute_arcpy_code` | โค้ด Python ใด ๆ ใน Pro (ตัวแปรค้างข้ามการเรียก) |
-
-จุดที่ทำให้ AI ทำงานได้เองจริง ๆ:
-
-- **มองเห็นแผนที่** — `export_map_view` / `preview_layout` ส่งภาพ PNG กลับมา
-  ให้ AI ดูแล้วแก้สี/scale/label ต่อได้เอง
-- **หาข้อมูลเองได้** — `search_data`, `list_workspace_contents`, `list_folder`,
-  `describe_dataset` ค้นชุดข้อมูลใน gdb/โฟลเดอร์โดยไม่ต้องเพิ่มเข้าแผนที่ก่อน
-- **รู้จัก tool ที่ยังไม่เคยใช้** — `describe_geoprocessing_tool` คืนพารามิเตอร์
-  ชนิดข้อมูล ค่า default และ usage ของ arcpy tool ทุกตัว
-- **แก้ปัญหาเองได้** — `diagnose` บอกว่าติดตรงไหน (ไม่มี active map,
-  ไม่ได้เปิด map view, ไม่มีสิทธิ์เขียน ฯลฯ) และข้อความ error ทุกอันมี Hint
-- **เร็วขึ้น** — `run_batch` ยิงหลายคำสั่งใน round trip เดียว
-
-## สถาปัตยกรรม
-
-```
-Claude Code / Codex / Gemini CLI
-        │  MCP (stdio)
-        ▼
-arcgis-pro-mcp  (แพ็กเกจนี้ — Python ≥3.10 ทั่วไป ไม่ต้องมี arcpy)
-        │  JSON over TCP (localhost:6510, ค้นพอร์ตอัตโนมัติ)
-        ▼
-┌─ ภายใน ArcGIS Pro ──────────────────────────────────────────┐
-│  socket thread     → queue + PostMessage →  message loop     │
-│  (รับ JSON, ไม่แตะ arcpy)              ของ ArcGIS Pro เอง     │
-│                    ←     result      ←  รัน handler บน main  │
-└─────────────────────────────────────────────────────────────┘
+```text
+"Style the provinces by area, pastel red through green"
+"Which province has the highest population? Put the answer in a new field"
+"Export the current map view as a PNG and show me"
 ```
 
-แบ่งเป็น 2 ฝั่งเพราะ arcpy เข้าถึงโปรเจกต์ที่ **เปิดอยู่** (`"CURRENT"`) ได้
-เฉพาะจาก Python runtime ภายใน ArcGIS Pro
+**112 tools.** 109 run inside ArcGIS Pro itself, in about 9 ms each.
 
-| ส่วน | รันที่ไหน | โฟลเดอร์ |
-|---|---|---|
-| MCP server | Python 3.10+ ทั่วไป (ไม่ต้องมี arcpy) | `src/arcgis_pro_mcp/` |
-| Bridge plugin | ภายใน ArcGIS Pro (Python Toolbox) | `arcgis_pro_plugin/` |
+---
 
-### ทำไมต้องมี main-thread pump
+## Install
 
-ทดสอบบน ArcGIS Pro 3.5.2 แล้วพบว่า `arcpy.mp.ArcGISProject("CURRENT")`
-**ทำงานได้เฉพาะบน main thread ของ Pro เท่านั้น**:
+Download from [Releases](https://github.com/Knight60/ArcGIS-Pro-MCP/releases)
+and pick one:
 
-| ทดสอบ | ผล |
-|---|---|
-| เรียกจาก background thread | `OSError: CURRENT` เสมอ |
-| `pythoncom.CoInitialize` STA / MTA ก่อนเรียก | ไม่ช่วย |
-| เปิด `.aprx` ด้วย path จาก background thread | สำเร็จ แต่ได้ **สำเนาแยกของไฟล์ที่เซฟไว้** — เปิด 2 ครั้งได้ 2 object อิสระ, `camera.scale` = 0.0 |
-| เรียกจาก Python window | สำเร็จ (Python window = MainThread) |
+### The add-in on its own
 
-socket server จำเป็นต้องอยู่บน background thread ดังนั้น bridge จึงแยกหน้าที่:
-thread รับ JSON ส่งงานเข้า queue แล้ว **PostMessage ไปหา message-only window
-ที่สร้างไว้บน main thread** — message loop ของ ArcGIS Pro เองเป็นคนเรียก
-WndProc ของเรากลับมาบน main thread แล้วรัน handler (`arcgis_mcp/pump.py`)
+Double-click **`ArcGISProMCP.esriAddinX`**. ArcGIS Pro's own installer takes it
+from there. Restart Pro and the **MCP** tab appears.
 
-**จุดสำคัญคือ dispatcher ไม่ยึด main thread เลย** สองดีไซน์ก่อนหน้ายึดไว้และ
-ทำให้ Pro ค้างทั้งคู่ — ทั้ง sleep loop + `PumpWaitingMessages()` และ
-`GetMessage`/`DispatchMessage` loop เต็มรูปแบบ เพราะ **ArcGIS Pro ปิดการใช้งาน
-map view ตลอดเวลาที่ cell ใน Python window ยังทำงานอยู่** ไม่ว่าจะ dispatch
-message ครบแค่ไหน ทางแก้จึงต้องเลิกยึด Python window ไปเลย
+### Or the installer, if that does not work
 
-คำสั่งที่ไม่ต้องใช้โปรเจกต์ที่เปิดอยู่ — geoprocessing ตาม path,
-`describe_dataset`, `list_workspace_contents` — ยังทำงานได้แม้ไม่มี pump
-
-### ข้อสังเกตอื่นจากการทดสอบบน Pro 3.5.2
-
-สามข้อนี้ทำให้โค้ดที่ดู "ถูกต้อง" ทำงานผิดแบบเงียบ ๆ จึงบันทึกไว้:
-
-| เรื่อง | สิ่งที่พบ | ทางแก้ในโค้ด |
-|---|---|---|
-| `Map.defaultView` | เป็น view คนละตัวกับที่ผู้ใช้เห็น — `exportToPNG` ใช้ได้ แต่สั่ง `camera.setExtent()` แล้ว UI ไม่ขยับ และ `camera.scale` อ่านได้ `0.0` | ใช้ `project.activeView` แทน (`common.live_view`) |
-| `Layout.createTextElement` / `createPictureElement` | **ไม่มีใน Pro 3.x** (มีแค่ `createMapFrame`, `createMapSurroundElement`, `createTableFrameElement`) | ประกอบ `CIMGraphicElement` + `CIMTextGraphic`/`CIMPictureGraphic` เองแล้ว `setDefinition` |
-| `add_to_map` | Pro เพิ่ม output ของ geoprocessing เข้าแผนที่ให้เองอยู่แล้ว การเพิ่มซ้ำทำให้ได้ layer ชื่อเดียวกัน 2 อัน | `common.add_layer_once()` เช็ค data source ก่อน และ `remove_layer` ลบทุกอันที่ชื่อตรง |
-
-## ติดตั้ง
-
-### เร็วที่สุด: C# add-in + MCP over HTTP
-
-ถ้าใช้ [add-in](addin/) (แนะนำ — เร็วกว่าฝั่ง Python ~3,000 เท่า และไม่ต้องสั่งอะไร
-ตอนเปิด Pro):
+**`Install-ArcGISProMCP.ps1`** is one self-contained file — the add-in is
+inside it, so there is nothing else to download.
 
 ```powershell
-dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj -c Release
+powershell -ExecutionPolicy Bypass -File Install-ArcGISProMCP.ps1
+```
+
+Use this one when Pro loads the add-in but the MCP tab never appears: some
+machines have add-in security turned on, and the add-in alone cannot say so.
+The installer checks, tells you which of the two states it found, and offers
+the fix. Run it a second time and it offers to uninstall.
+
+Requires ArcGIS Pro 3.3+. Nothing else — no Python, no SDK, no admin rights.
+
+---
+
+## Connect an AI client
+
+Open the **MCP** tab in ArcGIS Pro and click your assistant:
+
+```text
+┌─ Bridge ─────────┬─ AI clients ────────────────────┬─ About ─┐
+│  ⏹       (( ))   │  ✓        ⊕       ⊕       ⊕      │   ⓘ     │
+│ Stop    Port     │ Claude  Codex Antigravity More   │  Info   │
+│ bridge  6510     │  Code                  clients ˅ │         │
+└──────────────────┴─────────────────────────────────┴─────────┘
+```
+
+| Icon | Meaning |
+|---|---|
+| ✓ green | that client already has the server — click to remove it |
+| ⊕ grey | click to add it |
+| greyed out | that client is not installed |
+
+It asks before changing anything, tells you which file it will write, and backs
+that file up first.
+
+Supported: **Claude Code, Codex, Antigravity, VS Code, Cursor, Cline, Gemini
+CLI, Claude Desktop.**
+
+<details>
+<summary>Or configure it by hand</summary>
+
+Most clients connect over HTTP:
+
+```powershell
 claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp
 ```
 
-restart ArcGIS Pro แล้วใช้ได้เลย ไม่ต้องมี Python สำหรับงานหลัก
-รายละเอียดใน [addin/README.md](addin/README.md)
-
-ส่วนที่เหลือของหน้านี้เป็นทางฝั่ง Python ซึ่งยังใช้ได้และจำเป็นถ้าต้องการ
-`execute_arcpy_code`
-
-### วิธีเร็วที่สุด (ฝั่ง Python)
-
-```powershell
-.\install.ps1
-```
-
-สคริปต์จะ: ตรวจ Python → `pip install -e .` → ลงทะเบียน MCP ให้กับ client ที่
-เจอในเครื่อง (Claude Code / Codex / Gemini — สำรองไฟล์ config เป็น `.bak` ก่อนแก้)
-→ ติดตั้ง **auto-start** ให้ bridge ขึ้นเองเมื่อเปิด ArcGIS Pro
-
-> auto-start ต้องเขียนไฟล์ลง Python environment ของ Pro
-> (`...\arcgispro-py3\Lib\site-packages`) ซึ่งอยู่ใน Program Files —
-> **ต้องรัน PowerShell แบบ Run as administrator** ถ้าไม่ได้รันแบบ admin
-> สคริปต์จะข้ามส่วนนี้แล้วบอกวิธีใช้ toolbox แทน (ไม่ error)
-
-ตัวเลือก:
-
-```powershell
-.\install.ps1 -Clients claude              # ลงทะเบียนเฉพาะ Claude Code
-.\install.ps1 -Clients none                # ไม่แตะ config ของ client
-.\install.ps1 -NoAutoStart                 # ไม่ติดตั้ง auto-start
-.\install.ps1 -Python C:\Python313\python.exe
-.\install.ps1 -ProPython "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe"
-.\install.ps1 -Uninstall                   # ถอน auto-start ออก
-```
-
-### Auto-start ทำงานยังไง
-
-ติดตั้ง 2 ไฟล์ลง site-packages ของ Pro: `arcgis_mcp_autostart.py` กับไฟล์ `.pth`
-ที่ import มันตอน Python เริ่มทำงาน
-
-`.pth` จะถูกรันใน **ทุก** process ที่ใช้ env นี้ (รวม background geoprocessing)
-โมดูลจึงมีด่านกัน 2 ชั้น:
-
-1. เช็คชื่อ executable ว่าเป็น `ArcGISPro.exe` ก่อน — ถ้าไม่ใช่ ออกทันที
-   **ไม่ import arcpy** (วัดจริงบน Pro 3.5.2: 0.3 วินาที ไม่กระทบ process อื่น)
-2. ใน daemon thread รอจนกว่า `arcpy.mp.ArcGISProject("CURRENT")` จะสำเร็จ —
-   ซึ่งเป็นจริงเฉพาะภายในแอป Pro เท่านั้น แล้วจึง start bridge
-
-error ทุกอย่างถูกกลืนและเขียน log ไว้ที่
-`%LOCALAPPDATA%\ArcGIS-MCP\autostart.log` — เปิด Pro ไม่พังแน่นอน
-
-ปิดชั่วคราวได้โดยแก้ `%LOCALAPPDATA%\ArcGIS-MCP\autostart.json` เป็น
-`"enabled": false`
-
-### ถ้าไม่ใช้ auto-start (หรือติดตั้งไม่ได้)
-
-1. เปิด ArcGIS Pro พร้อมโปรเจกต์ของคุณ
-2. **Catalog** → คลิกขวา **Toolboxes** → **Add Toolbox** →
-   เลือก `arcgis_pro_plugin/ArcGISMCP.pyt`
-3. รันเครื่องมือ **Start MCP Server** (พอร์ตเริ่มต้น 6510 — ถ้าไม่ว่างจะเลื่อนไปพอร์ตถัดไปให้เอง)
-
-toolbox จะถูกจำไว้ในไฟล์ `.aprx` ครั้งต่อไปแค่รัน **Start MCP Server** อีกครั้ง
-(server จะหยุดเมื่อปิด Pro)
-
-ทางเลือก — วางใน **Python window** ของ Pro:
-
-```python
-import sys; sys.path.insert(0, r"D:\Developing\ArcGIS-MCP\arcgis_pro_plugin")
-import mcp_bridge; print(mcp_bridge.start_server())
-```
-
-### ติดตั้ง main-thread dispatcher (จำเป็น)
-
-หลัง bridge ขึ้นแล้ว วางบรรทัดนี้ใน **Python window** ของ ArcGIS Pro หนึ่งครั้ง:
-
-```python
-import mcp_bridge; mcp_bridge.start_pump()
-```
-
-**คำสั่งนี้จบทันที** ไม่ค้าง cell ไว้ — ArcGIS Pro ทำงานตามปกติทุกอย่าง
-ถอนออกได้ด้วย tool `stop_pump` หรือ `python -m arcgis_pro_mcp stop-pump`
-
-ถ้าไม่ติดตั้ง คำสั่งที่แตะโปรเจกต์ที่เปิดอยู่จะ error พร้อมบอกวิธีติดตั้ง
-ส่วน `ping`, `get_capabilities`, `get_pump_status`, `stop_pump` และงานที่อิง
-path ล้วน ๆ ยังใช้ได้
-
-### ตรวจสอบว่าใช้ได้
-
-```powershell
-python -m arcgis_pro_mcp doctor
-```
-
-จะบอกว่าเจอ bridge ไหม เชื่อมต่อได้ไหม โปรเจกต์ไหนเปิดอยู่ มี active map /
-map view หรือยัง
-
-คำสั่ง CLI อื่น:
-
-```powershell
-python -m arcgis_pro_mcp tools     # รายการ tool ทั้งหมด
-python -m arcgis_pro_mcp setup     # snippet config สำหรับ client แต่ละตัว
-```
-
-### ติดตั้งเอง (ไม่ใช้สคริปต์)
-
-```powershell
-pip install -e .
-```
-
-**Claude Code** — repo นี้มี [.mcp.json](.mcp.json) ให้แล้ว หรือลงทะเบียนแบบ global:
-
-```powershell
-claude mcp add arcgis --scope user -- python -m arcgis_pro_mcp
-```
-
-**OpenAI Codex CLI** — `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.arcgis]
-command = "python"
-args = ["-m", "arcgis_pro_mcp"]
-```
-
-**Gemini CLI** — `~/.gemini/settings.json`:
-
 ```json
-{
-  "mcpServers": {
-    "arcgis": {
-      "command": "python",
-      "args": ["-m", "arcgis_pro_mcp"]
-    }
-  }
-}
+{ "mcpServers": { "arcgis": { "type": "http", "url": "http://127.0.0.1:6520/mcp" } } }
 ```
 
-## ตัวอย่าง prompt
+Antigravity wants `serverUrl` instead of `url` and no `type`. Codex and Claude
+Desktop launch a server rather than connecting to one, so they need the Python
+relay: `pip install arcgis-pro-mcp`, then point them at `arcgis-pro-mcp.exe`.
 
-- "โปรเจกต์ที่เปิดอยู่มี layer อะไรบ้าง แต่ละอันมีกี่ feature"
-- "หาข้อมูลถนนใน gdb ของโปรเจกต์ เพิ่มเข้าแผนที่ แล้ว buffer 500 เมตร"
-- "ลงสีชั้นจังหวัดตาม POP แบบ graduated 5 คลาส ramp Viridis แล้ว export ภาพมาให้ดู"
-- "ทำ layout A4 แนวนอน มี legend, scale bar, ลูกศรทิศเหนือ, ชื่อเรื่อง แล้ว export PDF"
-- "เลือกแปลงที่อยู่ในระยะ 1 กม. จากแม่น้ำ แล้วสรุปพื้นที่รวมแยกตามตำบล"
-- "layer ไหนขาด source บ้าง ซ่อมให้หน่อย"
-- "ใส่ label ชื่อจังหวัด ฟอนต์ 10pt มี halo แล้วเช็คภาพว่าอ่านออกไหม"
+</details>
 
-### Prompt สำเร็จรูป (MCP prompts)
+The bridge lives inside ArcGIS Pro, so **Pro has to be open**. Close it and the
+client's connection goes red.
 
-| Prompt | ใช้ทำอะไร |
-|---|---|
-| `explore_project` | สำรวจโปรเจกต์แล้วสรุปว่ามีอะไร พร้อมชี้จุดที่ผิดปกติ |
-| `make_map` | ทำแผนที่พร้อม export ตั้งแต่ symbology จนถึง layout PDF |
-| `analyze` | ตอบคำถามเชิงพื้นที่ด้วยข้อมูลในโปรเจกต์ |
+---
 
-### Resource
+## The ribbon
 
-| Resource | เนื้อหา |
-|---|---|
-| `arcgis://tools` | รายการ tool ทั้งหมดแยกตามกลุ่ม |
-| `arcgis://status` | สถานะ bridge และโปรเจกต์ที่เปิดอยู่ |
-| `arcgis://project` | สรุปโปรเจกต์ปัจจุบัน |
+**One button starts and stops**, the way a play button does: the icon shows
+what the next click will do, so it doubles as the state readout. Green ▶ means
+stopped, red ⏹ means running.
+
+**Status** shows a green broadcast while listening and a contained grey dot
+when not, with the port as its caption. Click it for the full report: requests
+served, which clients are connected, and the last error.
+
+---
 
 ## Tools
 
 <!-- TOOLS:START -->
 
-รวม **112 tools** — และทุกอย่างที่เหลือเข้าถึงได้ผ่าน `run_geoprocessing_tool` / `execute_arcpy_code`
+**112 tools.** Anything not listed is still reachable through `run_geoprocessing_tool` or `execute_arcpy_code`.
 
-### Session / โปรเจกต์ (14)
+### Session and project (14)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `ping` | Check that the ArcGIS Pro bridge is reachable and see which project it is attached to |
 | `get_capabilities` | List every command the connected bridge supports, grouped by area |
@@ -286,7 +133,7 @@ args = ["-m", "arcgis_pro_mcp"]
 
 ### Layer (19)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `get_layers` | List the layers (with draw order and group nesting) and standalone tables in a map |
 | `get_layer_info` | Full detail for one layer: data source, coordinate system, extent, fields, feature count, renderer and label state |
@@ -308,9 +155,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `add_join` | Join a table to a layer on a common field |
 | `remove_join` | Remove a join from a layer |
 
-### ข้อมูล attribute และการแก้ไข (11)
+### Attributes and editing (11)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `get_features` | Read attribute rows from a layer, table or dataset path, with an optional where clause, field subset, ordering and WKT geometry |
 | `count_features` | Count features, optionally matching a where clause |
@@ -326,7 +173,7 @@ args = ["-m", "arcgis_pro_mcp"]
 
 ### Selection (6)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `select_features` | Select features by SQL where clause |
 | `select_by_location` | Select features by spatial relationship to another layer |
@@ -335,9 +182,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `clear_selection` | Clear the selection on one layer, or on every layer in the map |
 | `zoom_to_selection` | Zoom the map view to the currently selected features |
 
-### Schema / สร้างชุดข้อมูล (11)
+### Schema and dataset creation (11)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `list_fields` | List a layer's fields with type, alias, length and domain |
 | `add_field` | Add a field to a layer or table |
@@ -353,7 +200,7 @@ args = ["-m", "arcgis_pro_mcp"]
 
 ### Geoprocessing (7)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `run_geoprocessing_tool` | Run any arcpy geoprocessing tool -- the universal escape hatch for analysis |
 | `list_geoprocessing_tools` | Search the available geoprocessing tools by name |
@@ -363,9 +210,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `check_extension` | Check, and optionally check out, an ArcGIS extension licence |
 | `get_messages` | Messages from the most recent geoprocessing operation |
 
-### Symbology / Label (6)
+### Symbology and labels (6)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `set_layer_renderer` | Change a layer's symbology: a single symbol, unique values by category, or a classified/continuous colour scheme by numeric field |
 | `get_layer_symbology` | Inspect a layer's current renderer, class breaks, unique values and label settings |
@@ -374,9 +221,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `apply_symbology_from_layer` | Copy symbology from a .lyrx file or another layer |
 | `save_layer_file` | Save a layer with its symbology to a .lyrx file for reuse |
 
-### มุมมองแผนที่ / Bookmark (7)
+### Map view and bookmarks (7)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `get_map_view` | Current camera position: centre, scale, rotation and visible extent |
 | `set_map_view` | Move the map view: set an extent, a centre point, a scale and/or a rotation |
@@ -386,9 +233,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `apply_bookmark` | Zoom the map view to a bookmark |
 | `delete_bookmark` ⚠️ | Delete a bookmark from a map |
 
-### Layout / แผนที่พร้อมพิมพ์ (16)
+### Layouts and printing (16)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `list_layouts` | List the print layouts with page size and element counts |
 | `get_layout_info` | Inspect a layout: page setup and every element with position and size |
@@ -409,7 +256,7 @@ args = ["-m", "arcgis_pro_mcp"]
 
 ### Raster (5)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `get_raster_info` | Raster detail: bands, size, cell size, pixel type, statistics and CRS |
 | `set_raster_symbology` | Set a raster layer's colorizer and colour ramp |
@@ -417,9 +264,9 @@ args = ["-m", "arcgis_pro_mcp"]
 | `sample_raster_values` | Read raster cell values at map coordinates or at a point layer's features |
 | `zonal_statistics` | Summarise raster values inside zone polygons and return the table |
 
-### ค้นหาและสำรวจข้อมูล (6)
+### Finding and inspecting data (6)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `list_workspace_contents` | List the datasets inside a geodatabase or folder |
 | `list_folder` | List GIS files and subfolders on disk |
@@ -430,107 +277,99 @@ args = ["-m", "arcgis_pro_mcp"]
 
 ### Escape hatch (4)
 
-| Tool | หน้าที่ |
+| Tool | What it does |
 |---|---|
 | `execute_arcpy_code` | Run Python inside ArcGIS Pro |
 | `get_pump_status` | Whether the main-thread dispatcher is installed |
 | `stop_pump` | Remove the main-thread dispatcher |
 | `run_batch` | Run several commands in one round trip -- much faster for multi-step workflows |
 
-⚠️ = เปลี่ยน/ลบข้อมูลจริง &nbsp;&nbsp; 🖼️ = ส่งภาพกลับมาให้ AI ดูได้
+⚠️ = changes or deletes real data &nbsp;&nbsp; 🖼️ = returns an image the AI can look at
 
 <!-- TOOLS:END -->
 
-## ตัวแปร environment (ไม่บังคับ)
+---
 
-| ตัวแปร | ค่าเริ่มต้น | ความหมาย |
-|---|---|---|
-| `ARCGIS_MCP_HOST` | `127.0.0.1` | host ของ bridge |
-| `ARCGIS_MCP_PORT` | `6510` | พอร์ตของ bridge — ถ้าตั้งค่านี้ จะ **ไม่** ค้นพอร์ตอัตโนมัติ |
-| `ARCGIS_MCP_TIMEOUT` | `600` | วินาทีที่รอ geoprocessing ที่ใช้เวลานาน |
+## Troubleshooting
 
-ปกติไม่ต้องตั้งเลย — bridge จะเขียนไฟล์ลงทะเบียนไว้ที่
-`%LOCALAPPDATA%\ArcGIS-MCP\instances\` ให้ฝั่ง MCP หาพอร์ตเจอเอง แม้พอร์ตจะเลื่อน
+**No MCP tab after restarting Pro.** Add-in security is the usual cause.
+Run `Install-ArcGISProMCP.ps1`; it will say so and offer the two ways round it.
 
-## โปรโตคอลภายใน (สำหรับผู้พัฒนา)
+**The client shows the server in red.** ArcGIS Pro is closed, or the bridge is
+stopped. Open Pro and check the toggle on the MCP tab shows ⏹ (running).
 
-Bridge ใช้ newline-delimited JSON ผ่าน TCP:
+**A command says a layer does not exist.** Layers inside a group need their
+full name, `"Group\Layer"`, for anything that runs through geoprocessing.
 
+**An edit did not appear.** ArcGIS Pro holds edits open so they can be undone,
+which also keeps the data locked. Call `save_edits`.
+
+---
+
+## Safety
+
+These tools change the project you have open and the data under it. Tools
+marked ⚠️ above modify or delete real data.
+
+The bridge binds to `127.0.0.1` only — nothing on the network can reach it —
+but anything that can run code on your machine can drive ArcGIS Pro through it
+while Pro is open. `execute_arcpy_code` runs arbitrary Python inside Pro.
+
+Prefer non-destructive steps, use `save_project` deliberately, and let the
+assistant confirm before bulk edits.
+
+---
+
+## How it works
+
+An ArcGIS Pro add-in written in C#, running inside Pro's own process:
+
+```text
+AI client ──MCP over HTTP :6520/mcp ─┐
+                                     │
+AI client ──MCP stdio──► arcgis-pro-mcp ──TCP :6510──┐
+                                     │               │
+                                     ▼               ▼
+              ┌─ C# add-in (inside the ArcGIS Pro process) ─┐
+              │   → QueuedTask.Run (Main CIM Thread)        │
+              │   anything it does not implement ─┐         │
+              └───────────────────────────────────┼─────────┘
+                                                  ▼ :6511
+                                    Python bridge (execute_arcpy_code)
 ```
-request : {"id": 1, "command": "get_layers", "params": {"map_name": null}}\n
-response: {"id": 1, "success": true, "data": {...}}\n
-error   : {"id": 1, "success": false, "error": "...", "traceback": "..."}\n
-```
 
-### เพิ่มคำสั่งใหม่
+Being in-process is the whole point. ArcGIS Pro will only let its own Main CIM
+Thread touch the open project, and an outside process cannot get onto it. An
+earlier all-Python version had to hand work to Pro's Python thread and wait,
+which took around 28 seconds per call. The add-in uses `QueuedTask.Run`
+directly: **9 ms**.
 
-1. เขียน handler ในโมดูลที่เหมาะสมใน [arcgis_pro_plugin/arcgis_mcp/](arcgis_pro_plugin/arcgis_mcp/)
-   แล้วครอบด้วย `@command("ชื่อคำสั่ง", GROUP)` — ลงทะเบียนอัตโนมัติ
-2. เพิ่ม 1 entry ใน [src/arcgis_pro_mcp/catalog.py](src/arcgis_pro_mcp/catalog.py)
-   — MCP tool ถูก generate จากตรงนี้ พร้อม JSON schema และคำอธิบายพารามิเตอร์
-3. ใน ArcGIS Pro รันเครื่องมือ **Reload MCP Handlers** เพื่อโหลดโค้ดใหม่
-   โดยไม่ต้องปิด Pro
-4. `python scripts/gen_tool_docs.py` เพื่ออัปเดตตารางใน README
+Three of the 112 tools stay on the Python side, and belong there:
+`execute_arcpy_code`, because a compiled add-in cannot run code composed at
+call time, and `get_pump_status` / `stop_pump`, which report on the Python
+bridge's own dispatcher.
 
-### ทดสอบ
+More detail in [docs/](docs/).
+
+---
+
+## Building it yourself
+
+You do not need to — the release is a single download. If you want to change
+something, see **[BUILD.md](BUILD.md)**.
 
 ```powershell
-python tests\test_catalog_matches_bridge.py   # catalog กับ handler ตรงกัน
-python tests\test_end_to_end_mock.py          # protocol + error + image ครบวงจร
-python tests\test_pump.py                     # queue/handoff ของ main-thread pump
+.\scripts\build.ps1
 ```
 
-ทั้งสองชุดรันได้โดยไม่ต้องมี ArcGIS Pro
+Everything used to produce a release is in this repository: the build, the
+signing, the icon drawing, and the installer that gets packed into one file.
 
-## ข้อควรระวังด้านความปลอดภัย
+---
 
-- Bridge รับเฉพาะ **localhost** แต่โปรเซสใดก็ได้ในเครื่องเชื่อมต่อได้ และ
-  `execute_arcpy_code` / `run_geoprocessing_tool` แก้ไขหรือลบข้อมูลได้จริง —
-  เปิด server เฉพาะตอนใช้งาน บนเครื่องที่เชื่อถือได้เท่านั้น
-- AI ทำงานกับ **โปรเจกต์จริงที่เปิดอยู่** — tool ที่ทำลายข้อมูลได้ถูกทำเครื่องหมาย ⚠️
-  ไว้ในตารางด้านบน และ `update_features` / `delete_features` จะปฏิเสธถ้าไม่ใส่
-  where clause เว้นแต่ยืนยันด้วย `allow_update_all` / `allow_delete_all`
-- ควร save/backup โปรเจกต์ก่อนให้ AI แก้ไขข้อมูลจำนวนมาก
+## Licence
 
-## แก้ปัญหาเบื้องต้น
+[MIT](LICENSE).
 
-| อาการ | สาเหตุ / วิธีแก้ |
-|---|---|
-| "Cannot reach the ArcGIS Pro MCP bridge" | ยังไม่ได้เปิด Pro หรือ bridge ยังไม่ขึ้น — รัน `python -m arcgis_pro_mcp doctor` (บอกสถานะ auto-start ด้วย) |
-| `OSError: CURRENT` แม้ติดตั้ง dispatcher แล้ว | dispatcher อาจถูกถอนไปแล้ว — เช็คด้วย `get_pump_status` |
-| ติดตั้ง auto-start แล้วแต่ bridge ไม่ขึ้น | ดู `%LOCALAPPDATA%\ArcGIS-MCP\autostart.log` — บอกว่าตกด่านไหน |
-| `OSError: CURRENT` / "dispatcher is not installed" | วาง `import mcp_bridge; mcp_bridge.start_pump()` ใน Python window ของ Pro |
-| คำสั่งค้างนานผิดปกติแล้วขึ้นว่า bridge busy | มีคำสั่งก่อนหน้าค้างอยู่ — รีสตาร์ต ArcGIS Pro |
-| "No active map" / "has no open view" | เปิดแท็บ map ใน Pro หรือเรียก `activate_map` ก่อน — คำสั่งกล้องและ export ต้องมี view ที่เปิดอยู่ |
-| "Layer not found" | ใช้ชื่อตามที่ `get_layers` แสดง (layer ใน group ใช้ long name แบบ `Group\Layer`) |
-| Tool ค้างนาน | geoprocessing ใช้เวลานาน — เพิ่ม `ARCGIS_MCP_TIMEOUT` |
-| "Unknown command" | bridge เก่ากว่า MCP server — รัน **Reload MCP Handlers** ใน toolbox |
-| แก้โค้ด bridge แล้วไม่มีผล | รัน **Reload MCP Handlers** (server ที่รันอยู่ไม่หลุด) |
-| Response too large | ใส่ where clause, ลด `fields` หรือลด `limit` |
-
-## โครงสร้าง repo
-
-```
-ArcGIS-MCP/
-├── arcgis_pro_plugin/            # ทำงานภายใน ArcGIS Pro
-│   ├── ArcGISMCP.pyt             # Toolbox: Start / Stop / Status / Reload
-│   ├── arcgis_mcp_autostart.py   # hook ให้ bridge ขึ้นเองเมื่อเปิด Pro
-│   ├── mcp_bridge.py             # socket server + instance discovery
-│   └── arcgis_mcp/               # handler แยกตามหมวด (ลงทะเบียนอัตโนมัติ)
-│       ├── registry.py           # @command decorator
-│       ├── pump.py               # queue + loop บน main thread ของ Pro
-│       ├── common.py             # helper ที่ใช้ร่วมกัน
-│       └── h_*.py                # project, layers, data, schema, selection,
-│                                 # geoprocessing, symbology, layout, view,
-│                                 # raster, catalog, code
-├── src/arcgis_pro_mcp/           # ทำงานนอก ArcGIS Pro
-│   ├── catalog.py                # นิยาม tool ทั้งหมด (source of truth)
-│   ├── server.py                 # FastMCP stdio server + prompts + resources
-│   ├── connection.py             # TCP client + ค้นพอร์ตอัตโนมัติ
-│   └── cli.py                    # doctor / tools / setup
-├── scripts/gen_tool_docs.py      # อัปเดตตาราง tool ใน README
-├── tests/                        # ตรวจ catalog และทดสอบครบวงจร (ไม่ต้องมี Pro)
-├── install.ps1                   # ติดตั้ง + ลงทะเบียน client
-├── .mcp.json
-└── pyproject.toml
-```
+Not affiliated with or endorsed by Esri. ArcGIS and ArcGIS Pro are trademarks
+of Esri.

@@ -321,7 +321,7 @@ namespace ArcGISProMCP.UI
     /// <summary>Opens the project's page in the default browser.</summary>
     internal class InfoButton : Button
     {
-        public const string ProjectUrl = "https://github.com/Knight60/ArcGIS-MCP";
+        public const string ProjectUrl = "https://github.com/Knight60/ArcGIS-Pro-MCP";
 
         protected override void OnUpdate()
         {

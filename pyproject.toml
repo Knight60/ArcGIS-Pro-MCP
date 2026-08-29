@@ -1,10 +1,18 @@
 [project]
 name = "arcgis-pro-mcp"
 version = "0.2.0"
-description = "MCP server that lets AI assistants (Claude Code, Codex, Gemini CLI) drive a live ArcGIS Pro session: 110 tools plus full arcpy access"
+description = "MCP server that lets AI assistants drive a live ArcGIS Pro session: 112 tools plus full arcpy access"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["arcgis", "arcgis-pro", "gis", "mcp", "model-context-protocol", "arcpy"]
 dependencies = ["mcp>=1.6.0", "pydantic>=2.0"]
+
+[project.urls]
+Homepage = "https://github.com/Knight60/ArcGIS-Pro-MCP"
+Repository = "https://github.com/Knight60/ArcGIS-Pro-MCP"
+Issues = "https://github.com/Knight60/ArcGIS-Pro-MCP/issues"
 
 [project.scripts]
 arcgis-pro-mcp = "arcgis_pro_mcp.cli:main"
