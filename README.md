@@ -418,6 +418,23 @@ something commercial; just keep the copyright notice.
 
 ---
 
+## Support this project
+
+Built and maintained in the open, with no company behind it.
+
+If it saves you time, **[sponsoring it](https://github.com/sponsors/Knight60)**
+helps keep it working. Most of the ongoing effort is not new features but
+keeping up with ArcGIS Pro: every release can move the framework it targets and
+shift the parameter order of its two thousand geoprocessing tools, and each one
+means regenerating that table and testing the whole surface again.
+
+Starring the repository costs nothing and helps other people find it. So does
+telling me what broke — a clear
+[issue](https://github.com/Knight60/ArcGIS-Pro-MCP/issues) is worth a great
+deal.
+
+---
+
 ## Disclaimer
 
 This software is provided **"as is", without warranty of any kind**, express or
