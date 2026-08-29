@@ -73,13 +73,15 @@ namespace ArcGISProMCP.Commands
                     .FirstOrDefault(l => string.Equals(l.Name, name,
                                                        StringComparison.OrdinalIgnoreCase));
                 if (layer != null)
-                    return new DataSource(layer, layer.GetTable()) { Name = layer.Name };
+                    return new DataSource(layer, RequireTable(layer.GetTable(), name))
+                    { Name = layer.Name };
 
                 var standalone = map.GetStandaloneTablesAsFlattenedList()
                     .FirstOrDefault(t => string.Equals(t.Name, name,
                                                        StringComparison.OrdinalIgnoreCase));
                 if (standalone != null)
-                    return new DataSource(null, standalone.GetTable()) { Name = standalone.Name };
+                    return new DataSource(null, RequireTable(standalone.GetTable(), name))
+                    { Name = standalone.Name };
             }
 
             var opened = TryOpenPath(name);
@@ -91,6 +93,20 @@ namespace ArcGISProMCP.Commands
             throw new ArgumentException(
                 $"No layer, table or dataset called '{name}'. Layers and tables in the "
                 + $"map: {available}. A full path also works, including memory\\name.");
+        }
+
+        /// <summary>
+        /// A layer whose source has gone -- a memory table after a restart,
+        /// a moved file -- still sits in the map but hands back no table.
+        /// Say that, rather than failing later with a null reference.
+        /// </summary>
+        private static Table RequireTable(Table table, string name)
+        {
+            if (table != null) return table;
+            throw new InvalidOperationException(
+                $"'{name}' is in the map but its data source is not available. "
+                + "An in-memory dataset does not survive an ArcGIS Pro restart; "
+                + "otherwise the file may have moved. Check get_broken_layers.");
         }
 
         private static Map TryResolveMap(Params parameters)

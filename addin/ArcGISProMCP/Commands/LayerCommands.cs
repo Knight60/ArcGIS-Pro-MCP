@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Mapping;
 using ArcGISProMCP.Bridge;
 
@@ -40,6 +41,84 @@ namespace ArcGISProMCP.Commands
 
             CommandRouter.Register("zoom_to_layer", Group,
                 "Zoom the map view to a layer's extent.", ZoomToLayer);
+
+            CommandRouter.Register("get_broken_layers", Group,
+                "List layers and tables whose data source is missing.", GetBrokenLayers);
+        }
+
+        /// <summary>
+        /// Anything pointing at data that is no longer there -- a moved file,
+        /// or an in-memory dataset after a restart.
+        /// </summary>
+        private static object GetBrokenLayers(Params parameters)
+        {
+            var broken = new List<Dictionary<string, object>>();
+
+            foreach (var item in MapHelpers.RequireProject().GetItems<MapProjectItem>())
+            {
+                var map = item.GetMap();
+                // Asking a layer for its status can itself throw while the map
+                // is still settling, so each one is checked on its own.
+                foreach (var layer in map.GetLayersAsFlattenedList())
+                {
+                    try
+                    {
+                        if (layer.ConnectionStatus == ConnectionStatus.Connected) continue;
+                        broken.Add(new Dictionary<string, object>
+                        {
+                            ["map"] = map.Name,
+                            ["layer"] = layer.Name,
+                            ["kind"] = "layer",
+                            ["status"] = layer.ConnectionStatus.ToString(),
+                        });
+                    }
+                    catch (Exception exception)
+                    {
+                        broken.Add(new Dictionary<string, object>
+                        {
+                            ["map"] = map.Name,
+                            ["layer"] = SafeName(layer),
+                            ["kind"] = "layer",
+                            ["status"] = $"could not be checked: {exception.Message}",
+                        });
+                    }
+                }
+                foreach (var table in map.GetStandaloneTablesAsFlattenedList())
+                {
+                    try
+                    {
+                        if (table.ConnectionStatus == ConnectionStatus.Connected) continue;
+                        broken.Add(new Dictionary<string, object>
+                        {
+                            ["map"] = map.Name,
+                            ["layer"] = table.Name,
+                            ["kind"] = "table",
+                            ["status"] = table.ConnectionStatus.ToString(),
+                        });
+                    }
+                    catch (Exception exception)
+                    {
+                        broken.Add(new Dictionary<string, object>
+                        {
+                            ["map"] = map.Name,
+                            ["layer"] = SafeName(table),
+                            ["kind"] = "table",
+                            ["status"] = $"could not be checked: {exception.Message}",
+                        });
+                    }
+                }
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["broken_count"] = broken.Count,
+                ["broken_layers"] = broken,
+            };
+        }
+
+        private static string SafeName(MapMember member)
+        {
+            try { return member.Name; } catch { return "(unnamed)"; }
         }
 
         private static object GetLayers(Params parameters)
@@ -145,17 +224,34 @@ namespace ArcGISProMCP.Commands
                 .Where(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            if (matches.Count == 0)
-                throw new ArgumentException($"Layer not found in map '{map.Name}': {name}");
-
-            foreach (var layer in matches) map.RemoveLayer(layer);
-
-            return new Dictionary<string, object>
+            if (matches.Count > 0)
             {
-                ["removed"] = name,
-                ["count"] = matches.Count,
-                ["map"] = map.Name,
-            };
+                foreach (var layer in matches) map.RemoveLayer(layer);
+                return new Dictionary<string, object>
+                {
+                    ["removed"] = name,
+                    ["count"] = matches.Count,
+                    ["map"] = map.Name,
+                };
+            }
+
+            // Standalone tables live beside the layers, not among them.
+            var tables = map.GetStandaloneTablesAsFlattenedList()
+                .Where(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (tables.Count > 0)
+            {
+                map.RemoveStandaloneTables(tables);
+                return new Dictionary<string, object>
+                {
+                    ["removed_table"] = name,
+                    ["count"] = tables.Count,
+                    ["map"] = map.Name,
+                };
+            }
+
+            throw new ArgumentException(
+                $"No layer or table called '{name}' in map '{map.Name}'.");
         }
 
         private static object RenameLayer(Params parameters)

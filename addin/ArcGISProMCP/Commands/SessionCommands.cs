@@ -59,13 +59,29 @@ namespace ArcGISProMCP.Commands
         private static object GetArcGisInfo(Params parameters)
         {
             var project = Project.Current;
-            var version = System.Reflection.Assembly
-                .GetAssembly(typeof(Project))?.GetName().Version?.ToString();
+
+            // The SDK assembly version is 13.x while the product is 3.x, so
+            // read the version off ArcGISPro.exe -- that is the number people
+            // mean when they say which ArcGIS Pro they are on.
+            string version = null, assemblyVersion = null;
+            try
+            {
+                version = System.Diagnostics.Process.GetCurrentProcess()
+                    .MainModule?.FileVersionInfo?.ProductVersion;
+            }
+            catch { /* fall back to the assembly version below */ }
+            try
+            {
+                assemblyVersion = System.Reflection.Assembly
+                    .GetAssembly(typeof(Project))?.GetName().Version?.ToString();
+            }
+            catch { }
 
             return new Dictionary<string, object>
             {
                 ["product"] = "ArcGIS Pro",
-                ["version"] = version,
+                ["version"] = version ?? assemblyVersion,
+                ["sdk_assembly_version"] = assemblyVersion,
                 ["project_path"] = project?.URI,
                 ["project_name"] = project?.Name,
                 ["default_geodatabase"] = project?.DefaultGeodatabasePath,

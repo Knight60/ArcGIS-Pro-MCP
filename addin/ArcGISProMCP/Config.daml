@@ -5,7 +5,7 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://schemas.esri.com/DADF/Registry Registry.xsd">
 
-  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.1.0" desktopVersion="3.5">
+  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.1.0" desktopVersion="3.7">
     <Name>ArcGIS Pro MCP</Name>
     <Description>Lets AI assistants drive this ArcGIS Pro session over the Model Context Protocol.</Description>
     <Author>ArcGIS Pro MCP</Author>

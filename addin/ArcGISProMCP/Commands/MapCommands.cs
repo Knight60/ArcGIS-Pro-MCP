@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Core.CIM;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Mapping;
@@ -22,8 +24,10 @@ namespace ArcGISProMCP.Commands
 
         public static void Register()
         {
-            CommandRouter.Register("save_project", Group,
-                "Save the project, or save a copy elsewhere.", SaveProject);
+            // Saving is a UI-thread operation, not an MCT one, so it is
+            // registered async and dispatched explicitly.
+            CommandRouter.RegisterAsync("save_project", Group,
+                "Save the project, or save a copy elsewhere.", SaveProjectAsync);
             CommandRouter.Register("create_map", Group,
                 "Create a new map or scene.", CreateMap);
             CommandRouter.Register("remove_map", Group,
@@ -51,15 +55,34 @@ namespace ArcGISProMCP.Commands
 
         // --- project ---------------------------------------------------------
 
-        private static object SaveProject(Params parameters)
+        /// <summary>
+        /// Runs work on ArcGIS Pro's UI thread. Project.SaveAsync and friends
+        /// touch UI-owned objects and throw "a different thread owns it" when
+        /// called from the MCT, where the other commands run.
+        /// </summary>
+        private static Task OnUiThread(Func<Task> work)
         {
-            var project = MapHelpers.RequireProject();
+            var dispatcher = FrameworkApplication.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess()) return work();
+            return dispatcher.Invoke(work);
+        }
+
+        internal static Task SaveEditsOnUiThread() =>
+            OnUiThread(() => Project.Current.SaveEditsAsync());
+
+        internal static Task DiscardEditsOnUiThread() =>
+            OnUiThread(() => Project.Current.DiscardEditsAsync());
+
+        private static async Task<object> SaveProjectAsync(Params parameters)
+        {
+            var project = Project.Current
+                ?? throw new InvalidOperationException("No project is open.");
             var saveAs = parameters.GetString("save_as_path");
 
             if (!string.IsNullOrWhiteSpace(saveAs))
             {
                 // SaveAsAsync leaves the original open, matching save_as_path.
-                project.SaveAsAsync(saveAs).Wait();
+                await OnUiThread(() => project.SaveAsAsync(saveAs)).ConfigureAwait(false);
                 return new Dictionary<string, object>
                 {
                     ["saved_copy"] = saveAs,
@@ -67,7 +90,7 @@ namespace ArcGISProMCP.Commands
                 };
             }
 
-            project.SaveAsync().Wait();
+            await OnUiThread(() => project.SaveAsync()).ConfigureAwait(false);
             return new Dictionary<string, object> { ["saved"] = project.URI };
         }
 

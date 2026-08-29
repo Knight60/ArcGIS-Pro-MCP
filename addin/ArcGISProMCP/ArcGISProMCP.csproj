@@ -14,7 +14,14 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!--
+      Must match the framework ArcGIS Pro itself targets: its assemblies are
+      built against it, and referencing an assembly from a newer framework is
+      a compile error. Pro 3.7 is net10.0; 3.3-3.6 were net8.0. Check
+      the bin/ArcGISPro.runtimeconfig.json in the Pro install after an upgrade, or
+      override with -p:TargetFramework=net8.0-windows to build for an older Pro.
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>

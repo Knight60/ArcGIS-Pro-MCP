@@ -73,12 +73,53 @@ tool catalog, tests และ CLI ใช้ต่อได้โดยไม่�
 
 | | ตอนพัฒนา | ตอนใช้งาน |
 |---|---|---|
-| ArcGIS Pro 3.5+ | ✅ | ✅ |
+| ArcGIS Pro | ✅ | ✅ |
 | .NET 8 SDK | ✅ | ❌ |
 | Visual Studio | ไม่บังคับ (ใช้ `dotnet build` ได้) | ❌ |
 | ArcGIS Pro SDK for .NET | เฉพาะเพื่อแพ็ก `.esriAddinX` | ❌ |
 
 ผู้ใช้ปลายทางแค่ดับเบิลคลิกไฟล์ `.esriAddinX` ครั้งเดียว
+
+## เวอร์ชันของ ArcGIS Pro
+
+**ต้อง build แยกต่อ .NET generation ของ Pro** — ไม่ใช่เพราะ API เปลี่ยน แต่เพราะ
+assembly ของ Pro ถูก build ด้วย framework ไหน โปรเจกต์นี้ก็ต้อง target ตัวนั้น
+(C# ไม่ยอมให้อ้าง assembly ที่มาจาก framework ใหม่กว่า)
+
+| ArcGIS Pro | `TargetFramework` | `desktopVersion` |
+|---|---|---|
+| 3.3 - 3.6 | `net8.0-windows` | `3.3` |
+| **3.7+** | **`net10.0-windows`** | `3.7` |
+
+ดูว่า Pro เวอร์ชันที่ลงไว้ target อะไรได้จาก `bin/ArcGISPro.runtimeconfig.json`
+ในโฟลเดอร์ที่ติดตั้ง (ช่อง `"tfm"`)
+
+build ให้เวอร์ชันเก่าโดยไม่แก้ไฟล์:
+
+```powershell
+dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj -p:TargetFramework=net8.0-windows
+```
+
+(ต้อง build บนเครื่องที่ลง Pro รุ่นนั้น เพราะ csproj อ้าง assembly จากที่ติดตั้งจริง)
+
+### ตอนอัปเกรด Pro ต้องทำอะไรบ้าง
+
+จากที่ทำจริงตอนอัปจาก 3.5.2 (net8.0) เป็น 3.7.1 (net10.0):
+
+1. แก้ `TargetFramework` ให้ตรง แล้ว build - **โค้ดคำสั่งทั้ง 90 ตัวไม่ต้องแก้เลย
+   สักบรรทัด** error ที่เจอเป็นเรื่อง framework ล้วน ๆ ไม่มี API ไหนหายไป
+2. **regenerate `gp-parameters.json`** ด้วย arcpy ของเวอร์ชันใหม่:
+
+   ```powershell
+   "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe" `
+       scripts\dump_gp_parameters.py
+   ```
+
+   ข้อนี้ห้ามข้าม: ถ้า tool ไหนแทรก parameter ใหม่กลางลำดับ ค่าจะไปลงผิดช่อง
+   **โดยไม่มี error** ตารางเก่ายังดูใช้ได้อยู่
+3. build อีกรอบ, restart Pro (`scripts/restart_pro.ps1`), ทดสอบ
+
+`tools.json` มาจาก `catalog.py` ไม่ผูกกับเวอร์ชัน Pro
 
 ## Build
 

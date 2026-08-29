@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Core;
@@ -31,12 +32,12 @@ namespace ArcGISProMCP.Commands
                 "Delete rows matching a where clause.", DeleteFeatures);
             CommandRouter.Register("list_fields", "schema",
                 "List a layer's fields with type, alias and length.", ListFields);
-            CommandRouter.Register("save_edits", Group,
+            CommandRouter.RegisterAsync("save_edits", Group,
                 "Commit pending edits. ArcGIS Pro holds edits open so they can be "
                 + "undone, which also keeps the data locked until they are saved.",
-                SaveEdits);
-            CommandRouter.Register("discard_edits", Group,
-                "Throw away pending edits.", DiscardEdits);
+                SaveEditsAsync);
+            CommandRouter.RegisterAsync("discard_edits", Group,
+                "Throw away pending edits.", DiscardEditsAsync);
         }
 
         private static BasicFeatureLayer Layer(Params parameters)
@@ -242,11 +243,12 @@ namespace ArcGISProMCP.Commands
         /// with pending edits is locked -- deleting or overwriting it fails
         /// until they are saved or discarded.
         /// </summary>
-        private static object SaveEdits(Params parameters)
+        private static async Task<object> SaveEditsAsync(Params parameters)
         {
-            var project = MapHelpers.RequireProject();
+            var project = Project.Current
+                ?? throw new InvalidOperationException("No project is open.");
             var had = project.HasEdits;
-            if (had) project.SaveEditsAsync().Wait();
+            if (had) await MapCommands.SaveEditsOnUiThread().ConfigureAwait(false);
             return new Dictionary<string, object>
             {
                 ["saved"] = had,
@@ -255,11 +257,12 @@ namespace ArcGISProMCP.Commands
             };
         }
 
-        private static object DiscardEdits(Params parameters)
+        private static async Task<object> DiscardEditsAsync(Params parameters)
         {
-            var project = MapHelpers.RequireProject();
+            var project = Project.Current
+                ?? throw new InvalidOperationException("No project is open.");
             var had = project.HasEdits;
-            if (had) project.DiscardEditsAsync().Wait();
+            if (had) await MapCommands.DiscardEditsOnUiThread().ConfigureAwait(false);
             return new Dictionary<string, object>
             {
                 ["discarded"] = had,

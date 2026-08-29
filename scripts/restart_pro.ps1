@@ -123,12 +123,38 @@ if ($Project -and (Test-Path $Project)) {
 
 # --- wait for the bridge -----------------------------------------------------
 
+function Test-ProjectOpen {
+    # The bridge comes up with the add-in, well before the project has
+    # finished opening -- so ask for something that needs Project.Current.
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 6510)
+        $stream = $client.GetStream()
+        $payload = [Text.Encoding]::UTF8.GetBytes(
+            "{`"id`":1,`"command`":`"get_project_info`",`"params`":{}}`n")
+        $stream.Write($payload, 0, $payload.Length)
+        $stream.Flush()
+        $client.ReceiveTimeout = 20000
+        $buffer = New-Object byte[] 8192
+        $read = $stream.Read($buffer, 0, $buffer.Length)
+        $client.Close()
+        return ([Text.Encoding]::UTF8.GetString($buffer, 0, $read) -like '*"success": true*') -or
+               ([Text.Encoding]::UTF8.GetString($buffer, 0, $read) -like '*"success":true*')
+    } catch {
+        return $false
+    }
+}
+
 $waited = 0
+$listening = $false
 while ($waited -lt $TimeoutSeconds) {
     Start-Sleep -Seconds 5
     $waited += 5
-    if (Test-Bridge) {
-        Write-Host "Bridge listening after ${waited}s."
+    if (-not $listening -and (Test-Bridge)) {
+        $listening = $true
+        Write-Host "Bridge listening after ${waited}s; waiting for the project..."
+    }
+    if ($listening -and (Test-ProjectOpen)) {
+        Write-Host "Project open and answering after ${waited}s."
         exit 0
     }
 }
