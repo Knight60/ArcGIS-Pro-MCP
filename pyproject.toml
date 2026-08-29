@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "MCP server that lets AI assistants drive a live ArcGIS Pro session: 112 tools plus full arcpy access"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Pisut Nakmuenwai" }]
 license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["arcgis", "arcgis-pro", "gis", "mcp", "model-context-protocol", "arcpy"]

@@ -8,8 +8,8 @@
   <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="0.2.0" desktopVersion="3.7">
     <Name>ArcGIS Pro MCP</Name>
     <Description>Lets AI assistants drive this ArcGIS Pro session over the Model Context Protocol.</Description>
-    <Author>ArcGIS Pro MCP</Author>
-    <Company>ArcGIS Pro MCP</Company>
+    <Author>Pisut Nakmuenwai</Author>
+    <Company>Pisut Nakmuenwai</Company>
     <Date>08/29/2026</Date>
     <Subject>Framework</Subject>
     <Image>pack://application:,,,/ArcGISProMCP;component/Images/Mcp32.png</Image>

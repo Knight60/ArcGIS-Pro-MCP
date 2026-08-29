@@ -374,9 +374,12 @@ signing, the icon drawing, and the installer that gets packed into one file.
 
 ---
 
-## Licence
+## Author and licence
 
-[MIT](LICENSE).
+Built by **Pisut Nakmuenwai** ([@Knight60](https://github.com/Knight60)).
+
+Released under the [MIT Licence](LICENSE) — use it, change it, ship it in
+something commercial; just keep the copyright notice.
 
 Not affiliated with or endorsed by Esri. ArcGIS and ArcGIS Pro are trademarks
 of Esri.
