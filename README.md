@@ -23,6 +23,11 @@ ArcGIS Pro can do that cannot be asked for in a sentence.
 109 of the 112 tools execute inside ArcGIS Pro's own process, in about 9 ms
 each.
 
+![Five requests in plain language, each changing the map: symbology, selection, zoom, labels](docs/images/demo.gif)
+
+*Every frame above was rendered by the add-in itself, running the request in
+the caption. Rebuild it with `python scripts/make_demo_gif.py`.*
+
 ![The MCP tab in ArcGIS Pro, with Thailand's provinces graduated by area](docs/images/mcp-menu.png)
 
 ---
