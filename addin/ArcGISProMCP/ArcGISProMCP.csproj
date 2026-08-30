@@ -32,7 +32,7 @@
 
     <PackageType>addin</PackageType>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Company>ArcGIS Pro MCP</Company>
     <Product>ArcGIS Pro MCP</Product>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

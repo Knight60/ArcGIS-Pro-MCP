@@ -7,10 +7,24 @@ inside ArcGIS Pro itself, so an AI assistant — Claude, Codex, Antigravity, or
 any other MCP client — can work on the project already open in front of you.
 Your data, your maps, your layouts. Not a copy, not an export.
 
+**Install the add-in, click the button for the assistant you use, done.** No
+config files to find, no JSON to hand-edit, no Python to install.
+
+**In any language your assistant speaks.** Your assistant does the
+understanding; this add-in never matches on English keywords. Non-English text
+travels intact in both directions, so a query can name a place in Thai and get
+Thai back — `PROV_NAMT LIKE '%เชียง%'` returns เชียงใหม่ and เชียงราย.
+
 ```text
 "Style the provinces by area, pastel red through green"
 "Which province has the highest population? Put the answer in a new field"
 "Export the current map view as a PNG and show me"
+```
+
+```text
+"ระบายสีจังหวัดตามขนาดพื้นที่ ไล่จากแดงพาสเทลไปเขียว"
+"จังหวัดไหนมีประชากรมากที่สุด ใส่คำตอบไว้ในคอลัมน์ใหม่"
+"ส่งออกมุมมองแผนที่ปัจจุบันเป็น PNG แล้วเอามาให้ดู"
 ```
 
 The aim is the whole of ArcGIS Pro, not a convenient corner of it. A request
@@ -426,8 +440,25 @@ signing, the icon drawing, and the installer that gets packed into one file.
 
 Built by **Pisut Nakmuenwai** ([@Knight60](https://github.com/Knight60)).
 
-Released under the [MIT Licence](LICENSE) — use it, change it, ship it in
-something commercial; just keep the copyright notice.
+Dual licensed.
+
+**[AGPL-3.0](LICENSE)** — free, and free to keep. Use it for your own work,
+paid or unpaid, on as many machines as you like. Modify it. Build on it. The
+one condition is reciprocal: if you pass on a work built from this one, or run
+it as a service other people use, those people get its source under the same
+terms.
+
+**[Commercial](COMMERCIAL-LICENSE.md)** — for shipping it inside a product you
+do not publish the source of, hosting it in a closed service, or redistributing
+it under your own name.
+
+Doing GIS work with it and delivering the maps and analysis is ordinary use,
+not distribution. Most people never need the second licence;
+[the details](COMMERCIAL-LICENSE.md) say where the line falls, and asking is
+free.
+
+Releases up to v1.0 were MIT and stay MIT — that grant cannot be withdrawn. The
+dual licence applies from v1.1.
 
 ---
 
