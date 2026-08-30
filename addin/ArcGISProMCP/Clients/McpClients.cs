@@ -252,7 +252,8 @@ namespace ArcGISProMCP.Clients
             return StdioLauncher() ?? throw new InvalidOperationException(
                 $"{client.Name} launches an MCP server rather than connecting to a "
                 + "URL, so it needs the Python relay -- and arcgis-pro-mcp.exe is not "
-                + "installed. Install it with:  pip install arcgis-pro-mcp");
+                + "installed. Install it with:\n\n"
+                + "    pip install git+https://github.com/Knight60/ArcGIS-Pro-MCP");
         }
 
         public static string Register(McpClient client)

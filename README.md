@@ -145,9 +145,18 @@ claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp
 { "mcpServers": { "arcgis": { "type": "http", "url": "http://127.0.0.1:6520/mcp" } } }
 ```
 
-Antigravity wants `serverUrl` instead of `url` and no `type`. Codex and Claude
-Desktop launch a server rather than connecting to one, so they need the Python
-relay: `pip install arcgis-pro-mcp`, then point them at `arcgis-pro-mcp.exe`.
+Antigravity wants `serverUrl` instead of `url` and no `type`.
+
+Codex and Claude Desktop launch a server rather than connecting to one, so they
+need the Python relay. It is not on PyPI yet; install it from this repository:
+
+```powershell
+pip install git+https://github.com/Knight60/ArcGIS-Pro-MCP
+```
+
+That puts `arcgis-pro-mcp.exe` on your PATH, which is what those two clients
+should be pointed at. The ribbon buttons do this for you and will say so if the
+relay is missing.
 
 </details>
 

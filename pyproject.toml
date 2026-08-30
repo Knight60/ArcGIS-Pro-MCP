@@ -10,6 +10,12 @@ license-files = ["LICENSE"]
 keywords = ["arcgis", "arcgis-pro", "gis", "mcp", "model-context-protocol", "arcpy"]
 dependencies = ["mcp>=1.6.0", "pydantic>=2.0"]
 
+# The MCP Registry checks this against the namespace being published, which
+# is how it knows the PyPI package and the io.github.knight60 namespace are
+# the same person's.
+[tool.mcp]
+mcpName = "io.github.knight60/arcgis-pro-mcp"
+
 [project.urls]
 Homepage = "https://github.com/Knight60/ArcGIS-Pro-MCP"
 Repository = "https://github.com/Knight60/ArcGIS-Pro-MCP"
