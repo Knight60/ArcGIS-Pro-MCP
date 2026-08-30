@@ -1,0 +1,46 @@
+ArcGIS Pro MCP
+Copyright (C) 2026 Pisut Nakmuenwai
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. The full text is in LICENSE.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+
+ADDITIONAL PERMISSION UNDER AGPL-3.0 SECTION 7
+----------------------------------------------
+
+As a special exception, the copyright holder gives permission to link this
+program with the ArcGIS Pro SDK assemblies supplied by Esri as part of an
+ArcGIS Pro installation, and to convey the resulting work, provided that the
+terms of the GNU Affero General Public License continue to apply to this
+program and to any modified version of it.
+
+This exception exists because the add-in is compiled against assemblies that
+are already on the machine as part of ArcGIS Pro and are never redistributed
+with it: the released package contains this program alone.
+
+
+COMMERCIAL LICENSING
+--------------------
+
+The AGPL requires anyone who conveys this program, a modified version of it, or
+a larger work containing it, or who makes such a work available to users over a
+network, to offer those users the complete corresponding source under the same
+terms.
+
+If that does not suit -- to include this program in a proprietary product, say,
+or to offer it as part of a paid service without publishing your own source --
+a separate commercial licence is available. See COMMERCIAL-LICENSE.md.
+
+
+EARLIER VERSIONS
+----------------
+
+Releases up to and including v1.0 were published under the MIT licence. That
+grant cannot be withdrawn: anyone who obtained those versions keeps MIT rights
+to them. The dual AGPL/commercial licence applies from v1.1 onward.

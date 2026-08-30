@@ -4,7 +4,7 @@ ArcGIS Pro MCP is dual licensed.
 
 | | |
 |---|---|
-| **[AGPL-3.0](LICENSE)** | Free. For open-source work, internal use, research, evaluation — anything where you are willing to publish your own source under the same terms if you distribute or host a work built on this one. |
+| **[AGPL-3.0](LICENSE)** (see also [NOTICE](NOTICE)) | Free. For open-source work, internal use, research, evaluation — anything where you are willing to publish your own source under the same terms if you distribute or host a work built on this one. |
 | **Commercial** | Paid. For everything else. |
 
 Nothing here restricts *using* the software. Both licences let you run it, on

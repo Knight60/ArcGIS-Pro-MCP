@@ -458,7 +458,8 @@ not distribution. Most people never need the second licence;
 free.
 
 Releases up to v1.0 were MIT and stay MIT — that grant cannot be withdrawn. The
-dual licence applies from v1.1.
+dual licence applies from v1.1. [NOTICE](NOTICE) carries the copyright and an
+AGPL Section 7 permission for linking with the ArcGIS Pro SDK.
 
 ---
 
