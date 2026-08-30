@@ -13,15 +13,23 @@ Your data, your maps, your layouts. Not a copy, not an export.
 "Export the current map view as a PNG and show me"
 ```
 
-The aim is the whole of ArcGIS Pro, not a convenient corner of it. **112 named
-tools** cover the work of an ordinary day — layers, attributes, selections,
-symbology, layouts, rasters, editing. `run_geoprocessing_tool` reaches every
-one of Pro's ~2,000 geoprocessing tools by name. `execute_arcpy_code` runs
-arbitrary arcpy inside the running application. Between them, there is little
-ArcGIS Pro can do that cannot be asked for in a sentence.
+The aim is the whole of ArcGIS Pro, not a convenient corner of it. A request
+falls through three layers, and takes the fastest one that can answer it:
 
-109 of the 112 tools execute inside ArcGIS Pro's own process, in about 9 ms
-each.
+| | | |
+|---|---|---|
+| **1** | **112 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 109 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
+| **2** | **Every geoprocessing tool** | `run_geoprocessing_tool` runs any of Pro's ~2,000 tools by name, with named parameters rather than a positional list to miscount. Still in-process, still C#. |
+| **3** | **Arbitrary arcpy** | `execute_arcpy_code` hands Python straight to arcpy in the running application. Whatever the layers above have no tool for, this reaches. |
+
+Layers 1 and 2 need nothing but the add-in. Layer 3 runs through an optional
+Python bridge inside ArcGIS Pro's own Python — install it when you want the
+escape hatch, skip it and the first two still work. A command the add-in does
+not implement is forwarded there automatically; if it is not running, the
+error says so and how to start it, rather than failing obscurely.
+
+The practical effect is that there is no such thing as "the tool for that is
+missing". If it can be done in ArcGIS Pro, it can be asked for in a sentence.
 
 ![Five requests in plain language, each changing the map: symbology, selection, zoom, labels](docs/images/demo.gif)
 
