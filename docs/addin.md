@@ -82,13 +82,14 @@ place where a tool is defined.
 
 ## What stays in Python
 
-Three of the 112, and they belong there:
+Seven of the 116, and they belong there:
 
 | Command | Why |
 |---|---|
 | `execute_arcpy_code` | a compiled add-in cannot run code composed at call time |
 | `get_pump_status` | it reports on the **Python** bridge's dispatcher, which only exists there |
 | `stop_pump` | likewise — the add-in has no pump to stop, it uses the MCT directly |
+| `get_metadata` / `set_metadata` / `export_metadata_iso19139` / `set_metadata_from_table` | they edit `arcpy.metadata` records, which the add-in cannot reach directly |
 
 Everything else is in the add-in. A command it does not know is forwarded to
 the Python bridge on 6511, which reports clearly if that bridge is not running.

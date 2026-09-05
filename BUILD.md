@@ -194,15 +194,16 @@ existing installation to tell an upgrade from a repeat run.
 ## Repository layout
 
 ```text
-addin/ArcGISProMCP/     The C# add-in -- 109 of the 112 commands
+addin/ArcGISProMCP/     The C# add-in -- 109 of the 116 commands
   Bridge/               TCP server, MCP over HTTP, command router
   Commands/             The commands, grouped by subject
   Clients/              Registering this server with AI clients
   UI/                   Ribbon buttons
   Config.daml           Ribbon definition and version
 src/arcgis_pro_mcp/     The Python MCP server (stdio)
-  catalog.py            All 112 tool definitions -- the single source of truth
-arcgis_pro_plugin/      The in-Pro Python bridge, for execute_arcpy_code
+  catalog.py            All 116 tool definitions -- the single source of truth
+arcgis_pro_plugin/      The in-Pro Python bridge: execute_arcpy_code and the
+                        metadata tools
 scripts/                Build, sign, install, icons, code generation
 tests/                  client-registration (C#), catalog drift (Python)
 docs/                   Architecture and the detail behind the decisions
@@ -211,8 +212,10 @@ docs/                   Architecture and the detail behind the decisions
 ### Adding a command
 
 1. Define it in `src/arcgis_pro_mcp/catalog.py`
-2. Write the handler under `addin/ArcGISProMCP/Commands/` and register it with
-   `CommandRouter.Register`
+2. Write the handler -- under `addin/ArcGISProMCP/Commands/` and register it
+   with `CommandRouter.Register`, or, when the command needs arcpy, as a
+   `@command` function in `arcgis_pro_plugin/arcgis_mcp/` (commands the add-in
+   does not implement are forwarded to the Python bridge automatically)
 3. `.\scripts\build.ps1`
 
 `tests/test_catalog_matches_bridge.py` fails if the catalog and the handlers

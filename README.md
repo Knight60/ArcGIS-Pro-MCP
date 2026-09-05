@@ -32,7 +32,7 @@ falls through three layers, and takes the fastest one that can answer it:
 
 | | | |
 |---|---|---|
-| **1** | **112 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 109 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
+| **1** | **116 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 109 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
 | **2** | **Every geoprocessing tool** | `run_geoprocessing_tool` runs any of Pro's ~2,000 tools by name, with named parameters rather than a positional list to miscount. Still in-process, still C#. |
 | **3** | **Arbitrary arcpy** | `execute_arcpy_code` hands Python straight to arcpy in the running application. Whatever the layers above have no tool for, this reaches. |
 
@@ -181,7 +181,7 @@ served, which clients are connected, and the last error.
 
 <!-- TOOLS:START -->
 
-**112 tools.** Anything not listed is still reachable through `run_geoprocessing_tool` or `execute_arcpy_code`.
+**116 tools.** Anything not listed is still reachable through `run_geoprocessing_tool` or `execute_arcpy_code`.
 
 ### Session and project (14)
 
@@ -346,6 +346,15 @@ served, which clients are connected, and the last error.
 | `get_project_items` | Folder connections, database connections and toolboxes registered in the project |
 | `add_folder_connection` | Register a folder with the project so its data is easy to browse |
 
+### Metadata (4)
+
+| Tool | What it does |
+|---|---|
+| `get_metadata` | Read a dataset's metadata record: style, title, summary, description, tags, credits and access/use constraints |
+| `set_metadata` ⚠️ | Write metadata fields on a dataset or geodatabase, optionally upgrading the record to ISO 19139 first; field names in English or Spanish |
+| `export_metadata_iso19139` | Export a dataset's metadata record to an ISO 19139 XML file |
+| `set_metadata_from_table` ⚠️ | Apply metadata to one or many datasets from a CSV/XLSX reference table |
+
 ### Escape hatch (4)
 
 | Tool | What it does |
@@ -422,10 +431,12 @@ earlier all-Python version had to hand work to Pro's Python thread and wait,
 which took around 28 seconds per call. The add-in uses `QueuedTask.Run`
 directly: **9 ms**.
 
-Three of the 112 tools stay on the Python side, and belong there:
+Seven of the 116 tools stay on the Python side, and belong there:
 `execute_arcpy_code`, because a compiled add-in cannot run code composed at
-call time, and `get_pump_status` / `stop_pump`, which report on the Python
-bridge's own dispatcher.
+call time, `get_pump_status` / `stop_pump`, which report on the Python
+bridge's own dispatcher, and the metadata tools (`get_metadata`,
+`set_metadata`, `export_metadata_iso19139`, `set_metadata_from_table`), which
+live on `arcpy.metadata`.
 
 More detail in [docs/](docs/).
 
