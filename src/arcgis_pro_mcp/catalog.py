@@ -904,6 +904,43 @@ CATALOG: List[Tool] = [
       P("folder", "str", REQUIRED, "Folder path."),
       P("alias", "str", None, "Display name.")),
 
+    # --- metadata ------------------------------------------------------------
+    T("get_metadata", "Metadata",
+      "Read a dataset's metadata record: the current metadata style plus "
+      "title, summary, description, tags, credits, access constraints and "
+      "use limitations. Works on feature classes, tables, rasters and "
+      "geodatabases.",
+      P("source", "str", REQUIRED, "Dataset or geodatabase path.")),
+
+    T("set_metadata", "Metadata",
+      "Write metadata fields on a dataset or geodatabase, optionally "
+      "upgrading the record to the ISO 19139 style first. Field names may be "
+      "given in English or Spanish.",
+      P("source", "str", REQUIRED, "Dataset or geodatabase path."),
+      P("fields", "dict", REQUIRED,
+        'Metadata fields and values, e.g. {"title": "Coberturas 2009", '
+        '"tags": "coberturas,clc"}.'),
+      P("estilo_iso19139", "bool", True,
+        "Upgrade the record to the ISO 19139 style before applying fields."),
+      destructive=True),
+
+    T("export_metadata_iso19139", "Metadata",
+      "Export a dataset's metadata record to an ISO 19139 XML file.",
+      P("source", "str", REQUIRED, "Dataset or geodatabase path."),
+      P("out_path", "str", REQUIRED, "Output .xml file path.")),
+
+    T("set_metadata_from_table", "Metadata",
+      "Apply metadata to one or many datasets from a CSV/XLSX reference "
+      "table. Two shapes are recognised: a campo|valor form for a single "
+      "dataset (pass 'source'), and a batch table with a dataset column plus "
+      "one metadata column per field.",
+      P("table_path", "str", REQUIRED, "CSV or XLSX reference table path."),
+      P("source", "str", None,
+        "Dataset path when the table is a single-dataset form."),
+      P("estilo_iso19139", "bool", True,
+        "Upgrade each record to the ISO 19139 style first."),
+      destructive=True),
+
     # --- utility -------------------------------------------------------------
     T("execute_arcpy_code", "Utility",
       "Run Python inside ArcGIS Pro. arcpy is already imported and "

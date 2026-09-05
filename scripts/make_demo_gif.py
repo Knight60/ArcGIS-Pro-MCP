@@ -152,7 +152,7 @@ def build(layer, field, output):
     demo.run("set_layer_labeling", enabled=False)
     demo.run("zoom_to_layer", expand_factor=0.05)
     demo.frames.append(demo.compose("Anything ArcGIS Pro can do, in a sentence.",
-                                    "112 tools · ~9 ms each · github.com/Knight60/ArcGIS-Pro-MCP"))
+                                    "116 tools · ~9 ms each · github.com/Knight60/ArcGIS-Pro-MCP"))
 
     output.parent.mkdir(parents=True, exist_ok=True)
     demo.frames[0].save(
