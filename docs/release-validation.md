@@ -36,7 +36,8 @@ Candidates and installers are separate from `dist`, and build does not deploy.
 | Install from the released file alone | Simulated on this machine: only `Install-ArcGISProMCP.cmd` in a folder, carrying a download's Mark-of-the-Web, no repository and no `.esriAddinX` beside it. Installed, Pro restarted, bridge answered 1.1.1.0 |
 | Codex on a machine with no relay | Virgin `CODEX_HOME`, config holding only the bytes the ribbon button writes: `codex mcp list` resolved it, the session connected with no transport error, and no `arcgis-pro-mcp.exe` process was spawned |
 | Untrusted publisher at default security | Not simulated: this machine keeps `BlockAddIns` = 1 with the build certificate trusted. A machine that trusts neither, at the default 0, is untested |
-| Installation on a machine other than the build machine | Pending |
+| 1.1.0 failure reproduced in the field | Confirmed on a second machine: clicking Codex raises "it needs the Python relay -- and arcgis-pro-mcp.exe is not installed" and writes nothing, because `DescribeConnection` calls `RequireLauncher` before the confirmation dialog is built |
+| Installation of 1.1.1 on a machine other than the build machine | Pending |
 | Pro 3.4 compilation/runtime | Pending genuine 3.4 references and runtime |
 | Single package on both runtimes | Not certified |
 
