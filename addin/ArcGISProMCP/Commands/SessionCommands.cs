@@ -7,6 +7,7 @@ using System.Linq;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Layouts;
 using ArcGIS.Desktop.Mapping;
+using ArcGISProMCP.Clients;
 using ArcGISProMCP.Bridge;
 
 namespace ArcGISProMCP.Commands
@@ -49,16 +50,27 @@ namespace ArcGISProMCP.Commands
         private static object Ping(Params parameters)
         {
             var server = MCPModule.Current?.Server;
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 ["pong"] = true,
                 ["implementation"] = "addin",
                 ["pid"] = Process.GetCurrentProcess().Id,
-                ["port"] = server?.Port,
+                // The address every AI client connects on. Named so nobody has
+                // to guess which of the three ports is theirs -- reporting the
+                // TCP bridge's number here once had an assistant tell its user
+                // the wrong port in perfectly good faith.
+                ["mcp_url"] = McpClientCatalog.HttpUrl,
+                ["tcp_bridge_port"] = server?.Port,
                 ["command_count"] = CommandRouter.Count,
-                // Deliberately not read here: Project.Current needs the MCT.
-                ["project_path"] = null,
             };
+
+            // Ping does not run on the MCT, so reading the project could throw.
+            // If it does, leave the key out: a null here reads as "no project
+            // open", which is a different and wrong answer.
+            try { result["project_path"] = Project.Current?.URI; }
+            catch (Exception) { }
+
+            return result;
         }
 
         private static object GetArcGisInfo(Params parameters)

@@ -110,9 +110,10 @@ namespace ArcGISProMCP.UI
             SmallImage = Icons.Get(running ? "Stop" : "Start", 16);
             TooltipHeading = running ? "Stop the MCP bridge" : "Start the MCP bridge";
             Tooltip = running
-                ? $"Listening on 127.0.0.1:{MCPModule.Current.Server.Port}. Stopping it "
-                  + "takes this ArcGIS Pro session away from every AI client."
-                : "Start listening so AI assistants can drive this ArcGIS Pro session.";
+                ? $"Listening on {McpClientCatalog.HttpUrl}\n\nStopping it takes this "
+                  + "ArcGIS Pro session away from every AI client."
+                : "Start listening so AI assistants can drive this ArcGIS Pro session.\n\n"
+                  + $"They will connect to {McpClientCatalog.HttpUrl}";
         }
 
         protected override void OnClick()
@@ -143,10 +144,15 @@ namespace ArcGISProMCP.UI
 
             LargeImage = Icons.Get(running ? "StatusOn" : "StatusOff");
             SmallImage = Icons.Get(running ? "StatusOn" : "StatusOff", 16);
-            Caption = running ? $"Port {server.Port}" : "Not running";
+            // The MCP port, not the TCP bridge's. This button used to show
+            // 6510, which is the one number no AI client ever needs.
+            Caption = running ? $"Port {McpHttpServer.DefaultPort}" : "Not running";
             TooltipHeading = running ? "Bridge is listening" : "Bridge is stopped";
-            Tooltip = "Port, commands served, which AI clients are connected, "
-                    + "and anything that has gone wrong.";
+            Tooltip = running
+                ? $"AI clients connect to {McpClientCatalog.HttpUrl}\n\n"
+                  + "Click for commands served, which clients are connected, "
+                  + "and anything that has gone wrong."
+                : "Click for what is configured and anything that has gone wrong.";
         }
 
         protected override void OnClick()
@@ -154,10 +160,12 @@ namespace ArcGISProMCP.UI
             var server = MCPModule.Current.Server;
             var report = new StringBuilder();
 
+            // The URL first: it is the one line anyone reading this needs.
             report.AppendLine(server.IsRunning
-                ? $"Listening on 127.0.0.1:{server.Port}"
+                ? $"AI clients connect to {McpClientCatalog.HttpUrl}"
                 : "Not listening.");
-            report.AppendLine($"MCP over HTTP: {McpClientCatalog.HttpUrl}");
+            report.AppendLine($"Legacy TCP bridge: 127.0.0.1:{server.Port} "
+                            + "(older Python scripts only)");
             report.AppendLine($"Commands implemented here: {CommandRouter.Count}");
             report.AppendLine($"Requests served: {server.RequestCount}");
             if (server.StartedAt.HasValue)

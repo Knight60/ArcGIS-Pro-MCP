@@ -136,6 +136,17 @@ that file up first.
 Supported: **Claude Code, Codex, Antigravity, VS Code, Cursor, Cline, Gemini
 CLI, Claude Desktop.**
 
+The address every one of them connects to is
+
+```
+http://127.0.0.1:6520/mcp
+```
+
+That is the only number worth remembering. The add-in also listens on 6510 for
+a legacy TCP bridge, and optionally on 6511 for the in-Pro Python fallback, but
+no AI client uses either. All three are bound to `127.0.0.1` and are not
+reachable from another machine — see [SECURITY.md](SECURITY.md).
+
 <details>
 <summary>Or configure it by hand</summary>
 
@@ -196,8 +207,9 @@ what the next click will do, so it doubles as the state readout. Green ▶ means
 stopped, red ⏹ means running.
 
 **Status** shows a green broadcast while listening and a contained grey dot
-when not, with the port as its caption. Click it for the full report: requests
-served, which clients are connected, and the last error.
+when not, captioned with the MCP port. Hover it for the full address to paste
+into a client; click it for the full report: requests served, which clients are
+connected, and the last error.
 
 ---
 

@@ -33,6 +33,17 @@ the MCP handshake all report.
   what it sees as `%APPDATA%` is really its own
   `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming`. The catalog now
   resolves whichever of the two layouts is on the machine.
+- **Everything that named a port named the wrong one.** The Status button's
+  caption, the toggle's tooltip and `ping`'s `port` field all reported 6510 —
+  the legacy TCP bridge, which no AI client uses — while the address clients
+  actually need, `http://127.0.0.1:6520/mcp`, appeared only on the second line
+  of a dialog you had to click. An assistant asked where it was connected duly
+  told its user 6510.
+- **`ping` always reported `project_path: null`**, even with a project open,
+  because it does not run on the Main CIM Thread and the field was hard-coded.
+  A null there reads as *no project open*, so assistants told people to open a
+  project they already had open. It now reads the project, and omits the key
+  rather than inventing a null if that read is not possible.
 - `-CheckOnly` reported a machine as *Ready* when nothing was installed.
 - `README.md` claimed ArcGIS Pro 3.3+; the package has required 3.7 since the
   .NET 10 move.
