@@ -1,0 +1,53 @@
+name: tests
+
+# GitHub Actions has no ArcGIS Pro, so it cannot build the add-in or produce a
+# release -- see BUILD.md. It can run everything that does not need Pro, which
+# is the client registration logic, the MCP HTTP transport, and the Python
+# catalog and pump tests. Those are the parts most likely to break silently.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the Python dependencies
+        run: pip install "mcp>=1.6.0,<2" "pydantic>=2.0"
+
+      - name: Client registration
+        run: dotnet run --project tests\client-registration --nologo -v quiet
+
+      - name: MCP over HTTP (.NET 8)
+        run: dotnet run --project tests\http-transport -f net8.0 --nologo -v quiet
+
+      - name: MCP over HTTP (.NET 10)
+        run: dotnet run --project tests\http-transport -f net10.0 --nologo -v quiet
+
+      - name: Catalog matches the bridge
+        run: python tests\test_catalog_matches_bridge.py
+
+      - name: Main-thread pump
+        run: python tests\test_pump.py
+
+      - name: End to end against a mock bridge
+        run: python tests\test_end_to_end_mock.py
+
+      - name: Installer scripts parse and call nothing undefined
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\installer\test-script-integrity.ps1

@@ -1,9 +1,32 @@
+# Normalise to LF in the repository and check out what each platform wants.
+# Without this, line endings depend on every contributor's core.autocrlf, and
+# files end up stored half one way and half the other.
+* text=auto
+
+*.cs      text
+*.csproj  text
+*.daml    text
+*.json    text
+*.md      text
+*.toml    text
+*.yml     text
+
+# Batch files are read by cmd.exe, which wants CRLF. PowerShell does not care,
+# but these are Windows-only scripts and CRLF is what an editor there expects.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.pyt text eol=lf
+*.py  text eol=lf
+
 # The packaged add-in is a zip; never let git treat it as text or try to
 # normalise its line endings.
 *.esriAddinX binary
 
 # The single-file installer is generated: mostly base64, and it changes in
-# full on every build. Marking it binary keeps diffs from trying to render it.
+# full on every build. Marking it binary keeps diffs from trying to render it,
+# and keeps the payload byte-for-byte what the build produced. This has to
+# come after the *.cmd rule above -- the last matching line wins.
 dist/Install-ArcGISProMCP.cmd binary
 
 *.png binary
+*.gif binary

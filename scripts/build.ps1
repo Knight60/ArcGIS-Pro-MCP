@@ -104,6 +104,11 @@ if (-not $SkipTests) {
     & dotnet run --project (Join-Path $repository "tests\client-registration") `
         -c $Configuration --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "client-registration tests failed" }
+    # Cheap, and it is the check that would have caught an installer shipping
+    # with a call to a function nobody had defined.
+    & powershell -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $repository 'tests\installer\test-script-integrity.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "installer script integrity check failed" }
     # The transport is the one thing every HTTP client depends on, so it is
     # checked on both frameworks the two Pro profiles use.
     foreach ($testFramework in 'net8.0', 'net10.0') {
@@ -159,6 +164,11 @@ $version = ([xml](Get-Content (Join-Path $repository "addin\ArcGISProMCP\Config.
 # itself as 0.1.0.0.
 $assemblyVersion = ([xml](Get-Content $project)).Project.PropertyGroup.Version |
     Where-Object { $_ }
+$pythonVersion = (Select-String -Path (Join-Path $repository 'pyproject.toml') `
+    -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+if ("$pythonVersion" -ne "$version") {
+    throw "Version mismatch: Config.daml says $version, pyproject.toml says $pythonVersion."
+}
 if ("$assemblyVersion" -ne "$version") {
     throw "Version mismatch: Config.daml says $version, the csproj says " +
           "$assemblyVersion. They are reported to different people and must agree."

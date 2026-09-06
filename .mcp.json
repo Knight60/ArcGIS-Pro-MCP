@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "arcgis": {
-      "command": "python",
-      "args": ["-m", "arcgis_pro_mcp"]
+      "type": "http",
+      "url": "http://127.0.0.1:6520/mcp"
     }
   }
 }
