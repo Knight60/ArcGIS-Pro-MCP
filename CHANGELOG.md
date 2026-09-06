@@ -28,6 +28,11 @@ the MCP handshake all report.
 - **The installer refused to run on ArcGIS Pro newer than 3.7.** Older than 3.7
   is a real barrier — the references are 13.7 — but newer is not. Below 3.7 it
   refuses; above, it warns and installs.
+- **Claude Desktop was reported as not installed, and would have been given a
+  config file it never reads.** The Microsoft Store build is a packaged app, so
+  what it sees as `%APPDATA%` is really its own
+  `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming`. The catalog now
+  resolves whichever of the two layouts is on the machine.
 - `-CheckOnly` reported a machine as *Ready* when nothing was installed.
 - `README.md` claimed ArcGIS Pro 3.3+; the package has required 3.7 since the
   .NET 10 move.

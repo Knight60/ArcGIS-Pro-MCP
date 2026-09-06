@@ -80,6 +80,36 @@ namespace ArcGISProMCP.Clients
             Path.Combine(new[] { Environment.GetFolderPath(
                 Environment.SpecialFolder.ApplicationData) }.Concat(parts).ToArray());
 
+        private static string LocalAppData(params string[] parts) =>
+            Path.Combine(new[] { Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData) }.Concat(parts).ToArray());
+
+        /// <summary>
+        /// Claude Desktop ships two ways on Windows and they do not share a
+        /// config file. The classic installer reads %APPDATA%\Claude. The
+        /// Microsoft Store build is a packaged app, so what it sees as %APPDATA%
+        /// is really its own LocalCache\Roaming inside %LOCALAPPDATA%\Packages.
+        /// Writing to the wrong one of the two does not fail -- the file is
+        /// simply never read, and the button goes green over nothing.
+        /// </summary>
+        private static string ClaudeDesktopConfig()
+        {
+            const string leaf = "claude_desktop_config.json";
+            var packages = LocalAppData("Packages");
+            if (Directory.Exists(packages))
+            {
+                foreach (var package in Directory.GetDirectories(packages, "Claude_*"))
+                {
+                    var packaged = Path.Combine(
+                        package, "LocalCache", "Roaming", "Claude", leaf);
+                    if (File.Exists(packaged)
+                        || Directory.Exists(Path.GetDirectoryName(packaged)))
+                        return packaged;
+                }
+            }
+            return AppData("Claude", leaf);
+        }
+
         /// <summary>
         /// The clients, in the order they appear on the ribbon. Order is by how
         /// likely someone is to be using it with ArcGIS Pro, not alphabetical.
@@ -159,11 +189,18 @@ namespace ArcGISProMCP.Clients
             {
                 Id = "claude-desktop",
                 Name = "Claude Desktop",
-                ConfigPath = AppData("Claude", "claude_desktop_config.json"),
+                ConfigPath = ClaudeDesktopConfig(),
                 Shape = ConfigShape.JsonMcpServers,
                 // Claude Desktop launches servers; it does not dial out to one.
                 Transport = Transport.Stdio,
-                InstalledMarkers = new[] { AppData("Claude") },
+                // The Store build keeps its logs outside the package, so that
+                // folder is the marker that it is installed at all.
+                InstalledMarkers = new[]
+                {
+                    AppData("Claude"),
+                    LocalAppData("Claude"),
+                    Path.GetDirectoryName(ClaudeDesktopConfig()),
+                },
             },
         };
 

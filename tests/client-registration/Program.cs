@@ -168,6 +168,32 @@ McpClientRegistrar.Register(codex);
 Check("toml: section at EOF replaced", File.ReadAllText(codex.ConfigPath)
     .Split("[mcp_servers.arcgis]").Length - 1 == 1);
 
+// --- Claude Desktop ships packaged and unpackaged, with different paths ------
+
+// The Store build is an MSIX package, so what it reads as %APPDATA% is really
+// its own LocalCache. Writing the classic path on such a machine succeeds and
+// is then never read, which is the failure this catalog entry has to avoid.
+var installedDesktop = McpClientCatalog.ById("claude-desktop");
+var packagesRoot = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
+var packaged = Directory.Exists(packagesRoot)
+    ? Directory.GetDirectories(packagesRoot, "Claude_*")
+        .Select(d => Path.Combine(d, "LocalCache", "Roaming", "Claude"))
+        .FirstOrDefault(Directory.Exists)
+    : null;
+
+Check("claude desktop: names the config file",
+    Path.GetFileName(installedDesktop.ConfigPath) == "claude_desktop_config.json");
+Check(packaged == null
+        ? "claude desktop: unpackaged install uses %APPDATA%"
+        : "claude desktop: packaged install uses the package LocalCache",
+    packaged == null
+        ? installedDesktop.ConfigPath == Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Claude", "claude_desktop_config.json")
+        : Path.GetDirectoryName(installedDesktop.ConfigPath) == packaged,
+    installedDesktop.ConfigPath);
+
 // --- a stdio client: the add-in writes the bridge and points the client at it -
 
 var desktop = Copy(McpClientCatalog.ById("claude-desktop"), "claude_desktop_config.json");
