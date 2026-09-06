@@ -338,6 +338,13 @@ $willLoad = switch ([int]$effective) {
 
 if ($willLoad) {
     Good ""
+    # -CheckOnly installs nothing, so on a machine with no copy on it the
+    # honest answer is what would happen, not that anything is ready.
+    if ($CheckOnly -and -not $installed) {
+        Good "Nothing is installed. Add-in security here would let it load."
+        Say  "Run this installer again without -CheckOnly to install it."
+        exit 0
+    }
     Good "Ready. Restart ArcGIS Pro and look for the MCP tab."
     Say  "Then point your AI client at it from that tab, or run:"
     Say  "  claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp"
