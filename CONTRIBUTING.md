@@ -53,6 +53,19 @@ written in the wrong shape does not fail — it is **ignored**, and the button
 goes green while nothing works. That mistake has already cost this project one
 release.
 
+## The ribbon screenshot
+
+`docs/images/mcp-menu.png` shows the MCP tab, and a reader trusts the picture
+over the prose — it once showed `Port 6510` for weeks after the caption became
+the MCP port. Retake it whenever the ribbon changes:
+
+```powershell
+.\scripts\capture_ribbon.ps1 -Delay 10
+```
+
+Click the ArcGIS Pro window while it counts down. It captures that window only,
+and refuses rather than saving if something else is in front.
+
 ## Style
 
 - `.editorconfig` covers indentation and line endings; `.gitattributes` keeps
