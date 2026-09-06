@@ -4,7 +4,7 @@ Notable changes, newest first. Versions are the add-in version in
 `addin/ArcGISProMCP/Config.daml`, which is what the ribbon, the installer and
 the MCP handshake all report.
 
-## 1.1.1 — unreleased
+## 1.1.1 — 2026-09-07
 
 ### Fixed
 
