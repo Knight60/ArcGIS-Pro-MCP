@@ -4,13 +4,11 @@
     ArcGIS Pro MCP add-in.
 
     Assemblies are referenced straight out of the ArcGIS Pro installation, so
-    the only thing this needs beyond Pro itself is the .NET 8 SDK: no NuGet
+    the only thing this needs beyond Pro itself is the matching .NET SDK: no NuGet
     feed and no Visual Studio extension.
 
-    Packaging is left to Esri's own targets file, which ships with Pro: it
-    builds the .esriAddinX with the layout Pro expects and then registers it
-    with RegisterAddIn.exe, so a build installs the add-in ready for the next
-    ArcGIS Pro start.
+    The packaging target below produces an .esriAddinX. Deployment is opt-in
+    with DeployAddIn=true; release candidates must be tested before publishing.
   -->
 
   <PropertyGroup>
@@ -19,9 +17,12 @@
       built against it, and referencing an assembly from a newer framework is
       a compile error. Pro 3.7 is net10.0; 3.3-3.6 were net8.0. Check
       the bin/ArcGISPro.runtimeconfig.json in the Pro install after an upgrade, or
-      override with -p:TargetFramework=net8.0-windows to build for an older Pro.
+      use ProTargetVersion=3.4 and matching ArcGISProDir for the older baseline.
     -->
+    <ProTargetVersion Condition="'$(ProTargetVersion)' == ''">3.7</ProTargetVersion>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(ProTargetVersion)' == '3.4'">net8.0-windows</TargetFramework>
     <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0-windows</TargetFramework>
+    <DeployAddIn Condition="'$(DeployAddIn)' == ''">false</DeployAddIn>
     <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
@@ -32,11 +33,24 @@
 
     <PackageType>addin</PackageType>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Company>ArcGIS Pro MCP</Company>
     <Product>ArcGIS Pro MCP</Product>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
+
+  <Target Name="ValidateProTarget" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(ProTargetVersion)' != '3.4' and '$(ProTargetVersion)' != '3.7'"
+           Text="ProTargetVersion must be 3.4 or 3.7." />
+    <Error Condition="('$(ProTargetVersion)' == '3.4' and '$(TargetFramework)' != 'net8.0-windows') or ('$(ProTargetVersion)' == '3.7' and '$(TargetFramework)' != 'net10.0-windows')"
+           Text="TargetFramework must match ProTargetVersion: 3.4/net8.0-windows or 3.7/net10.0-windows." />
+    <GetAssemblyIdentity AssemblyFiles="@(Reference->'%(HintPath)')">
+      <Output TaskParameter="Assemblies" ItemName="ProReferenceIdentity" />
+    </GetAssemblyIdentity>
+    <!-- Pro SDK assembly major versions are 13.x for Pro 3.x. Check every reference. -->
+    <Error Condition="!$([System.String]::Copy('%(ProReferenceIdentity.Version)').StartsWith('1$(ProTargetVersion).'))"
+           Text="Reference %(ProReferenceIdentity.Identity) (%(ProReferenceIdentity.Version)) is not Pro $(ProTargetVersion). Supply genuine matching assemblies with ArcGISProDir; lowering the manifest is not sufficient." />
+  </Target>
 
   <!-- Where ArcGIS Pro is installed. Override with -p:ArcGISProDir=... -->
   <PropertyGroup>
@@ -127,18 +141,21 @@
   <Target Name="PackageAddIn" AfterTargets="Build">
     <PropertyGroup>
       <AddInStage>$(IntermediateOutputPath)addin-stage\</AddInStage>
-      <AddInFile>$(OutputPath)$(AssemblyName).esriAddinX</AddInFile>
+      <AddInFile>$(TargetDir)$(AssemblyName).esriAddinX</AddInFile>
     </PropertyGroup>
 
     <RemoveDir Directories="$(AddInStage)" />
     <MakeDir Directories="$(AddInStage)Install" />
 
     <Copy SourceFiles="Config.daml" DestinationFolder="$(AddInStage)" />
+    <XmlPoke XmlInputPath="$(AddInStage)Config.daml"
+             Query="/*[local-name()='ArcGIS']/*[local-name()='AddInInfo']/@desktopVersion"
+             Value="$(ProTargetVersion)" />
     <ItemGroup>
-      <AddInBinaries Include="$(OutputPath)$(AssemblyName).dll" />
+      <AddInBinaries Include="$(TargetPath)" />
       <!-- The dll and its symbols only: a deps.json here makes Pro's loader
            try to resolve dependencies it already provides. -->
-      <AddInBinaries Include="$(OutputPath)$(AssemblyName).pdb" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
+      <AddInBinaries Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
     </ItemGroup>
     <Copy SourceFiles="@(AddInBinaries)" DestinationFolder="$(AddInStage)Install" />
 

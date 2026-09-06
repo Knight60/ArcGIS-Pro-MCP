@@ -101,10 +101,8 @@ namespace ArcGISProMCP.Clients
                 Name = "Codex",
                 ConfigPath = Home(".codex", "config.toml"),
                 Shape = ConfigShape.Toml,
-                // Codex's stable config takes command/args. Rather than bet on
-                // which build supports a url, it launches the Python entry
-                // point, which relays to this same add-in.
-                Transport = Transport.Stdio,
+                // Streamable HTTP connects directly to the installed add-in.
+                Transport = Transport.Http,
                 InstalledMarkers = new[] { Home(".codex") },
             },
             new McpClient
@@ -218,9 +216,17 @@ namespace ArcGISProMCP.Clients
                 var text = File.ReadAllText(client.ConfigPath);
 
                 if (client.Shape == ConfigShape.Toml)
-                    return Regex.IsMatch(text,
-                        $@"^\s*\[mcp_servers\.{Regex.Escape(client.ServerName)}\]",
-                        RegexOptions.Multiline);
+                {
+                    var tomlSection = Regex.Match(text, TomlSectionPattern(client.ServerName, false));
+                    if (!tomlSection.Success) return false;
+                    if (client.Transport != Transport.Http) return true;
+                    // An old stdio registration needs the Add/Update flow,
+                    // not the Remove flow. Do not mark it as HTTP-ready.
+                    return Regex.IsMatch(tomlSection.Value,
+                        @"(?m)^[ \t]*url[ \t]*=[ \t]*[""']"
+                        + Regex.Escape(McpClientCatalog.HttpUrl) + @"[""'][ \t]*(?:#.*)?\r?$")
+                        && !Regex.IsMatch(tomlSection.Value, @"(?m)^[ \t]*(command|args)[ \t]*=");
+                }
 
                 var root = JsonNode.Parse(text, null, Lenient) as JsonObject;
                 var section = root?[SectionName(client)] as JsonObject;
@@ -361,8 +367,13 @@ namespace ArcGISProMCP.Clients
             var section = new StringBuilder();
             section.AppendLine();
             section.AppendLine($"[mcp_servers.{client.ServerName}]");
-            section.AppendLine($"command = '{launcher}'");
-            section.AppendLine("args = []");
+            if (client.Transport == Transport.Http)
+                section.AppendLine($"url = \"{McpClientCatalog.HttpUrl}\"");
+            else
+            {
+                section.AppendLine($"command = '{launcher}'");
+                section.AppendLine("args = []");
+            }
 
             File.WriteAllText(client.ConfigPath, text + section, new UTF8Encoding(false));
 
@@ -376,9 +387,16 @@ namespace ArcGISProMCP.Clients
         /// </summary>
         private static string RemoveTomlSection(string text, string name)
         {
-            var pattern = $@"(?m)^[ \t]*\[mcp_servers\.{Regex.Escape(name)}(\.[^\]]+)?\][^\n]*\n"
-                        + @"(?:(?![ \t]*\[)[^\n]*\n?)*";
-            return Regex.Replace(text, pattern, "").TrimEnd() + "\n";
+            return Regex.Replace(text, TomlSectionPattern(name, true), "").TrimEnd() + "\n";
+        }
+
+        private static string TomlSectionPattern(string name, bool children)
+        {
+            var key = Regex.Escape(name);
+            var server = $"(?:{key}|\"{key}\"|'{key}')";
+            return $@"(?m)^[ \t]*\[mcp_servers[ \t]*\.[ \t]*{server}"
+                + (children ? @"(?:\.[^\]]+)?" : "")
+                + @"[ \t]*\][^\n]*(?:\n|$)(?:(?![ \t]*\[)[^\n]*\n?)*";
         }
 
         // --- safety ------------------------------------------------------------

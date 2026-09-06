@@ -8,7 +8,7 @@ authors = [{ name = "Pisut Nakmuenwai" }]
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 keywords = ["arcgis", "arcgis-pro", "gis", "mcp", "model-context-protocol", "arcpy"]
-dependencies = ["mcp>=1.6.0", "pydantic>=2.0"]
+dependencies = ["mcp>=1.6.0,<2", "pydantic>=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/Knight60/ArcGIS-Pro-MCP"

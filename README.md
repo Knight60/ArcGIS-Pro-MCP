@@ -81,15 +81,19 @@ machines have add-in security turned on, and the add-in alone cannot say so.
 The installer checks, tells you which of the two states it found, and offers
 the fix. Run it a second time and it offers to uninstall.
 
-Requires ArcGIS Pro 3.3+. Nothing else — no Python, no SDK, no admin rights.
+Requires ArcGIS Pro 3.7. Nothing else — no Python, no SDK, no admin rights.
+It is built against 3.7 and will not load on anything older; a newer Pro should
+be fine, and the installer says so rather than stopping you.
 
 <details>
 <summary>Or the build straight off <code>main</code></summary>
 
 The same two files are also committed to
-[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist), which is
-the build the current source produces. Between releases it can be ahead of the
-latest release — a fix that is committed but not yet tagged will be there first.
+[`dist/`](https://github.com/Knight60/ArcGIS-Pro-MCP/tree/main/dist). It holds
+the most recent build that has been through
+[release validation](docs/release-validation.md), so it matches the latest
+release, and can be ahead of it when a validated fix is not yet tagged.
+Building from source writes elsewhere; only a validated build reaches `dist/`.
 
 They are committed rather than left as build output because GitHub Actions has
 no ArcGIS Pro to build against: a build only exists if someone with Pro
@@ -147,14 +151,28 @@ claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp
 
 Antigravity wants `serverUrl` instead of `url` and no `type`.
 
-Codex and Claude Desktop launch a server rather than connecting to one, so they
-need the Python relay. It is not on PyPI yet; install it from this repository:
+Codex connects directly using Streamable HTTP. In `~/.codex/config.toml`,
+replace the existing `arcgis` section (including its old `env` subtable) with:
+
+```toml
+[mcp_servers.arcgis]
+url = "http://127.0.0.1:6520/mcp"
+```
+
+The Codex ribbon button writes exactly this, backs the file up first, and
+replaces an older `command`/`args` registration in place — one click, whichever
+state you are in. Everything else in the file is left alone. Restart Codex
+afterwards. Installing the add-in never rewrites a client config on its own.
+See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+The Claude Desktop registration still uses the Python relay. It is not on
+PyPI yet; install it from this repository:
 
 ```powershell
 pip install git+https://github.com/Knight60/ArcGIS-Pro-MCP
 ```
 
-That puts `arcgis-pro-mcp.exe` on your PATH, which is what those two clients
+That puts `arcgis-pro-mcp.exe` on your PATH, which is what the stdio client
 should be pointed at. The ribbon buttons do this for you and will say so if the
 relay is missing.
 

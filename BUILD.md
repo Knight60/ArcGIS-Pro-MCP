@@ -12,7 +12,7 @@ This page is for changing the code or producing your own build.
 
 | | Version | Notes |
 |---|---|---|
-| **ArcGIS Pro** | 3.3 or later | Required. The project references Pro's own assemblies by path. |
+| **ArcGIS Pro** | 3.4 or 3.7 | Matching installation/reference assemblies are required for each build profile. |
 | **.NET SDK** | Matching Pro (see below) | `dotnet --list-sdks` |
 | **Python** | 3.10+ | Only used to generate the tool schema. |
 
@@ -23,13 +23,20 @@ Studio itself, or a NuGet feed. Assemblies are referenced straight out of
 ### The .NET version has to match ArcGIS Pro
 
 C# refuses to reference an assembly built for a newer framework than the
-project targets, so **each .NET generation of Pro needs its own build**. This
-is not because the API changed; it has not.
+project targets. A build using 3.7/.NET 10 references cannot target 3.4 by
+lowering its framework or manifest. The project checks every referenced Pro
+assembly version and refuses mismatched references.
 
 | ArcGIS Pro | `TargetFramework` | `desktopVersion` |
 |---|---|---|
-| 3.3 – 3.6 | `net8.0-windows` | `3.3` |
-| **3.7+** | **`net10.0-windows`** | `3.7` |
+| 3.4 baseline | `net8.0-windows` | `3.4` |
+| 3.7 native | `net10.0-windows` | `3.7` |
+
+Esri documents forward compatibility from add-ins built for Pro 3.0–3.6 to
+3.7, with clipboard/drag-and-drop caveats. Thus a single package is possible
+in principle by compiling against **3.4** and testing that exact package on
+both versions. It is not yet certified for this repository. See
+[Esri's .NET 10 migration guide](https://doc.esri.com/en/arcgis-pro/latest/sdk/api-reference/conceptdocs/docs/ProGuide-NET-10-Upgrade.html).
 
 To find out which one an installation needs, read `"tfm"` from
 `C:\Program Files\ArcGIS\Pro\bin\ArcGISPro.runtimeconfig.json`.
@@ -37,10 +44,13 @@ To find out which one an installation needs, read `"tfm"` from
 Building for an older Pro without editing anything:
 
 ```powershell
-dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj -p:TargetFramework=net8.0-windows
+.\scripts\build.ps1 -ProTargetVersion 3.4 -ArcGISProDir 'C:\ReferenceEnvironments\Pro34'
 ```
 
-The build has to happen on a machine with that version of Pro installed.
+The directory must contain genuine matching Pro assemblies with the original
+`bin` and `bin\Extensions` layout. Obtain Pro through your licensed Esri
+installation environment. A .NET 8 SDK alone is insufficient. Only Pro 3.7
+references have been found on the current machine.
 
 ---
 
@@ -50,7 +60,8 @@ The build has to happen on a machine with that version of Pro installed.
 .\scripts\build.ps1
 ```
 
-Everything a release needs ends up in `dist\`:
+Build candidates end up in `artifacts\candidates\pro-3.7\` (or `pro-3.4`).
+The script does not install the candidate or overwrite released files in `dist`.
 
 | File | What it is |
 |---|---|
@@ -75,12 +86,13 @@ The steps it runs:
 ### The edit loop
 
 ```powershell
-dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj
+dotnet build addin\ArcGISProMCP\ArcGISProMCP.csproj -p:DeployAddIn=true
 .\scripts\restart_pro.ps1
 ```
 
-`dotnet build` deploys to the add-in folder on its own, but **ArcGIS Pro only
-loads add-ins at startup**, so every change needs a restart.
+Deployment is opt-in with `-p:DeployAddIn=true`. **ArcGIS Pro only loads add-ins
+at startup**, so every change needs a restart. Save your project before
+restarting and prefer a disposable test project for release validation.
 
 `restart_pro.ps1` closes Pro, answering its "save changes?" prompt with *Don't
 Save*, reopens the same project, and waits until the bridge answers. Pass
@@ -98,14 +110,20 @@ Save*, reopens the same project, and waits until the bridge answers. Pass
 ## Tests
 
 ```powershell
-dotnet run --project tests\client-registration    # 19 checks, no ArcGIS Pro needed
+dotnet run --project tests\client-registration    # config migration and preservation
+dotnet run --project tests\http-transport -f net8.0
+dotnet run --project tests\http-transport -f net10.0
 python -m pytest tests\                           # catalog drift, mock end-to-end
+python tests\test_end_to_end_mock.py              # explicit script entry point
+python scripts\test_http.py --expected-version 1.1.1.0  # installed candidate only
 ```
 
 `client-registration` exercises the AI-client config writing against **copies**
-in a temp folder, never a real config. What it checks is that registering and
-unregistering leaves everything else in the file byte for byte — particularly
-Codex's `config.toml`, which is edited as text rather than through a parser.
+in a unique temp folder, never a real config. It checks preservation of other
+settings, backup contents, legacy stdio replacement, CRLF/LF files, and duplicate
+prevention. JSON formatting and trailing TOML whitespace can change. The HTTP
+tests use the real HTTP server and a fake GIS dispatcher on loopback port 16520;
+they verify transport compatibility, not Pro API or add-in loading compatibility.
 
 Against a live ArcGIS Pro (Pro must be open):
 
@@ -157,12 +175,20 @@ what ArcGIS Pro actually enforces is in
 
 ## Releasing
 
+Before publishing, complete [the release validation checklist](docs/release-validation.md).
+The script produces candidates only. Copy validated, signed (where required)
+files from `artifacts\candidates\pro-<version>` to `dist` only after recording
+runtime results and checksums. Copy `build-report.json` across with them: it
+records the version, reference assembly versions and the SHA-256 of both files,
+so what is published can be told apart from a later rebuild of the same source.
+`dist` currently holds the validated, signed 1.1.1 build.
+
 ```powershell
 .\scripts\build.ps1 -Sign
-gh release create v1.0 `
+gh release create v1.1.1 `
     dist\ArcGISProMCP.esriAddinX `
     dist\Install-ArcGISProMCP.cmd `
-    --title "v1.0" --notes-file NOTES.md
+    --title "v1.1.1" --notes-file NOTES.md
 ```
 
 **CI cannot build this.** GitHub Actions has no ArcGIS Pro to reference, so
@@ -182,7 +208,7 @@ places claiming to be the current build while disagreeing is the state worth
 avoiding; replacing the assets takes a moment and settles it:
 
 ```powershell
-gh release upload v1.0 dist\ArcGISProMCP.esriAddinX dist\Install-ArcGISProMCP.cmd --clobber
+gh release upload v1.1.1 dist\ArcGISProMCP.esriAddinX dist\Install-ArcGISProMCP.cmd --clobber
 ```
 
 Set `version` in `addin/ArcGISProMCP/Config.daml` first. It appears in the

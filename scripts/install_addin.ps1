@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Install the ArcGIS Pro MCP add-in.
 
@@ -53,7 +53,8 @@ param(
     [switch]$TrustPublisher,
     [switch]$AllowAllAddIns,
     [switch]$Uninstall,
-    [switch]$Reinstall
+    [switch]$Reinstall,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,6 +69,7 @@ function Good($text) { Write-Host $text -ForegroundColor Green }
 # they are different directories, and the add-in lands where Pro will never
 # look for it.
 $documents = [Environment]::GetFolderPath("MyDocuments")
+if ([string]::IsNullOrWhiteSpace($documents)) { throw 'Windows Documents folder could not be resolved. Run as your normal signed-in user.' }
 $target = Join-Path $documents "ArcGIS\AddIns\ArcGISPro"
 
 function Get-AddInVersion($path) {
@@ -81,6 +83,8 @@ function Get-AddInVersion($path) {
             if (-not $entry) { return $null }
             $reader = New-Object IO.StreamReader($entry.Open())
             try { $daml = [xml]$reader.ReadToEnd() } finally { $reader.Close() }
+            if ($daml.ArcGIS.AddInInfo.id -ne '{2e4cb7d3-56a7-4caf-911f-390b5821de61}') { return $null }
+            if (-not $zip.GetEntry('Install/ArcGISProMCP.dll')) { return $null }
             return $daml.ArcGIS.AddInInfo.version
         } finally { $zip.Dispose() }
     } catch {
@@ -118,12 +122,26 @@ function Find-InstalledCopies {
     # changes appear not to take effect, which is a bad afternoon.
     if (-not (Test-Path $target)) { return @() }
     return @(Get-ChildItem $target -Recurse -Filter "*.esriAddinX" -ErrorAction SilentlyContinue |
-             Where-Object { $_.Name -like "ArcGISProMCP*" })
+             Where-Object { Get-AddInVersion $_.FullName })
+}
+
+function Remove-EmptyAddInFolders {
+    # Double-clicking the .esriAddinX makes RegisterAddIn.exe leave a folder
+    # named after the add-in id behind. Removing the package does not remove
+    # it, so uninstalling looks like it half worked. Only empty ones go: a
+    # folder with anything in it is somebody else's.
+    if (-not (Test-Path -LiteralPath $target)) { return }
+    Get-ChildItem -LiteralPath $target -Directory -ErrorAction SilentlyContinue |
+        Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Recurse -Force -File -ErrorAction SilentlyContinue) } |
+        ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            if (-not (Test-Path -LiteralPath $_.FullName)) { Good "Removed the empty $($_.Name) folder" }
+        }
 }
 
 function Uninstall-AddIn($copies) {
     foreach ($copy in $copies) {
-        Remove-Item $copy.FullName -Force
+        Remove-Item -LiteralPath $copy.FullName -Force
         Good "Removed $($copy.FullName)"
     }
     Remove-EmptyAddInFolders
@@ -134,6 +152,7 @@ function Uninstall-AddIn($copies) {
     Say  "scripts\sign_addin.ps1 -Untrust."
 }
 
+if ($Uninstall -and $CheckOnly) { throw 'Use either -CheckOnly or -Uninstall.' }
 if ($Uninstall) {
     $copies = Find-InstalledCopies
     if (-not $copies) {
@@ -166,6 +185,23 @@ $AddInPath = (Resolve-Path $AddInPath).Path
 # anything, and the question names the action rather than offering Yes and No.
 $installed = Find-InstalledCopies
 $incoming = Get-AddInVersion $AddInPath
+if (-not $incoming) { throw 'The input is not a valid ArcGIS Pro MCP package. Nothing was installed.' }
+$proInstall = (Get-ItemProperty 'HKLM:\SOFTWARE\ESRI\ArcGISPro' -ErrorAction SilentlyContinue).InstallDir
+if (-not $proInstall) { $proInstall = Join-Path $env:ProgramW6432 'ArcGIS\Pro' }
+$proExe = Join-Path $proInstall 'bin\ArcGISPro.exe'
+if (-not (Test-Path -LiteralPath $proExe)) { throw 'ArcGIS Pro is not installed.' }
+$proVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($proExe).ProductVersion
+# Built against 3.7 references, so an older Pro cannot load it. A newer one
+# very likely can -- Esri documents add-ins built for earlier 3.x running on
+# later 3.x -- so call it untested rather than refuse a setup that works.
+$proMajorMinor = [version](($proVersion -split '\.')[0..1] -join '.')
+if ($proMajorMinor -lt [version]'3.7') {
+    throw "This release is built for ArcGIS Pro 3.7 and cannot load on $proVersion. Nothing was installed."
+}
+if ($proMajorMinor -gt [version]'3.7') {
+    Warn "Built for ArcGIS Pro 3.7; found $proVersion. It should load, but this combination is untested."
+}
+Say "ArcGIS Pro $proVersion found."
 $current = if ($installed) { Get-AddInVersion $installed[0].FullName } else { $null }
 
 Say ""
@@ -181,7 +217,7 @@ if ($installed) {
     Say "  This installer carries version $incoming."
 }
 
-if (-not $Reinstall) {
+if (-not $Reinstall -and -not $CheckOnly) {
     if (-not $installed) {
         # Nothing there: the only question is whether to put it there.
         $answer = Choose "Install ArcGIS Pro MCP $incoming?" @(
@@ -215,10 +251,11 @@ if (-not $Reinstall) {
 # Anything already there goes first. Leaving an older copy behind is the
 # failure this has actually caused: Pro picks one, and every change made to
 # the other silently does nothing.
+if (-not $CheckOnly) {
 $stale = Find-InstalledCopies |
     Where-Object { $_.FullName -ne (Join-Path $target "ArcGISProMCP.esriAddinX") }
 foreach ($copy in $stale) {
-    Remove-Item $copy.FullName -Force
+    Remove-Item -LiteralPath $copy.FullName -Force
     Say "Removed an older copy: $($copy.FullName)"
 }
 if ($stale) { Remove-EmptyAddInFolders }
@@ -226,6 +263,9 @@ if ($stale) { Remove-EmptyAddInFolders }
 New-Item -ItemType Directory -Force $target | Out-Null
 Copy-Item $AddInPath (Join-Path $target "ArcGISProMCP.esriAddinX") -Force
 Good "Installed to $target"
+} else {
+    Say 'Check only: no add-in, certificate or security settings will be changed.'
+}
 
 # --- read the signature out of the package -----------------------------------
 
@@ -301,6 +341,7 @@ if ($willLoad) {
     Good "Ready. Restart ArcGIS Pro and look for the MCP tab."
     Say  "Then point your AI client at it from that tab, or run:"
     Say  "  claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp"
+    Say  'Codex: click Codex on the MCP tab to add/update HTTP registration, then restart Codex.'
     exit 0
 }
 
@@ -308,6 +349,7 @@ if ($willLoad) {
 
 Say ""
 Warn "ArcGIS Pro will not load this add-in as things stand."
+if ($CheckOnly) { exit 1 }
 
 if ([int]$effective -ge 2) {
     Warn "Security is set to $effective, which excludes every add-in that is not Esri's."
@@ -315,6 +357,7 @@ if ([int]$effective -ge 2) {
 }
 
 if ($TrustPublisher) {
+    if ([int]$effective -ge 2) { throw 'Trusting this publisher cannot override a policy that excludes third-party add-ins. Contact your administrator.' }
     if (-not $signerCertificate) { throw "This add-in is not signed, so there is nothing to trust." }
 
     Say ""

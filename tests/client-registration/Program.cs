@@ -17,8 +17,7 @@ void Check(string what, bool ok, string detail = null)
     if (!ok) failures++;
 }
 
-var sandbox = Path.Combine(Path.GetTempPath(), "mcp-client-test");
-if (Directory.Exists(sandbox)) Directory.Delete(sandbox, true);
+var sandbox = Path.Combine(Path.GetTempPath(), "mcp-client-test-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(sandbox);
 
 // --- detection on this machine, read only ------------------------------------
@@ -134,6 +133,40 @@ Check("toml: unrelated tables kept",
     tomlAfter.Contains("[plugins.\"browser@openai-bundled\"]")
     && tomlAfter.Contains("model = \"gpt-5.5\""));
 Check("toml: our section added", tomlAfter.Contains("[mcp_servers.arcgis]"));
+Check("codex: direct HTTP transport", codex.Transport == Transport.Http);
+Check("toml: HTTP URL without relay", tomlAfter.Contains($"url = \"{McpClientCatalog.HttpUrl}\"")
+    && !tomlAfter.Contains("arcgis-pro-mcp.exe"));
+Check("toml: original backup", File.ReadAllText(codex.ConfigPath + ".arcgis-mcp.bak") == toml);
+
+foreach (var newline in new[] { "\n", "\r\n" })
+{
+    var legacy = toml + newline + "[mcp_servers.arcgis]" + newline
+        + "command = 'C:\\missing\\arcgis-pro-mcp.exe'" + newline + "args = []" + newline
+        + "[mcp_servers.arcgis.env]" + newline + "OLD_RELAY = 'yes'" + newline
+        + "[mcp_servers.arcgis_other]" + newline + "url = 'http://other'" + newline;
+    File.WriteAllText(codex.ConfigPath, legacy);
+    Check("toml: legacy stdio needs update", !McpClientRegistrar.IsRegistered(codex));
+    McpClientRegistrar.Register(codex);
+    var migrated = File.ReadAllText(codex.ConfigPath);
+    Check("toml: legacy migration " + newline.Length,
+        migrated.StartsWith(toml) && !migrated.Contains("OLD_RELAY")
+        && !migrated.Contains("missing") && migrated.Contains("[mcp_servers.arcgis_other]")
+        && migrated.Contains($"url = \"{McpClientCatalog.HttpUrl}\""));
+    Check("toml: migration backup", File.ReadAllText(codex.ConfigPath + ".arcgis-mcp.bak") == legacy);
+}
+foreach (var key in new[] { "\"arcgis\"", "'arcgis'" })
+{
+    File.WriteAllText(codex.ConfigPath, toml + $"\n[mcp_servers.{key}]\ncommand = 'missing.exe'\n");
+    McpClientRegistrar.Register(codex);
+    var migrated = File.ReadAllText(codex.ConfigPath);
+    Check("toml: quoted key migration " + key, McpClientRegistrar.IsRegistered(codex)
+        && !migrated.Contains("missing.exe") && !migrated.Contains($"[mcp_servers.{key}]")
+        && migrated.StartsWith(toml));
+}
+File.WriteAllText(codex.ConfigPath, toml + "\n[mcp_servers.arcgis]");
+McpClientRegistrar.Register(codex);
+Check("toml: section at EOF replaced", File.ReadAllText(codex.ConfigPath)
+    .Split("[mcp_servers.arcgis]").Length - 1 == 1);
 
 // Registering twice must not leave two copies of the section.
 McpClientRegistrar.Register(codex);

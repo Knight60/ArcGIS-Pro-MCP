@@ -3,7 +3,7 @@
     Build, sign and package the ArcGIS Pro MCP add-in for release.
 
 .DESCRIPTION
-    Produces everything a release needs into dist\:
+    Produces candidates into artifacts\candidates\pro-<version>\:
 
         ArcGISProMCP.esriAddinX      the add-in. Double-clicking it installs it.
         Install-ArcGISProMCP.cmd     one self-contained file: the add-in is
@@ -30,11 +30,12 @@
     Subject of the signing certificate. See scripts\sign_addin.ps1.
 
 .PARAMETER SkipTests
-    Skip the client-registration tests. They do not need ArcGIS Pro.
+    Skip the client-registration, transport and installer tests. None of
+    them need ArcGIS Pro.
 
 .EXAMPLE
     .\scripts\build.ps1
-    # dist\ArcGISProMCP.esriAddinX and dist\Install-ArcGISProMCP.cmd
+    # artifacts\candidates\pro-3.7\ contains the add-in and installer
 
 .EXAMPLE
     .\scripts\build.ps1 -Sign
@@ -46,14 +47,27 @@ param(
     [string]$Configuration = "Release",
     [switch]$Sign,
     [string]$CertificateSubject = "CN=ArcGIS MCP Add-In",
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [ValidateSet("3.4", "3.7")]
+    [string]$ProTargetVersion = "3.7",
+    [string]$ArcGISProDir = "$env:ProgramW6432\ArcGIS\Pro"
 )
 
 $ErrorActionPreference = "Stop"
 
 $repository = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $project = Join-Path $repository "addin\ArcGISProMCP\ArcGISProMCP.csproj"
-$dist = Join-Path $repository "dist"
+$dist = Join-Path $repository "artifacts\candidates\pro-$ProTargetVersion"
+
+# Fail before generating inputs or touching artifacts when references are wrong.
+$core = Join-Path $ArcGISProDir "bin\ArcGIS.Core.dll"
+if (-not (Test-Path -LiteralPath $core)) { throw "No ArcGIS.Core.dll at $core. Supply -ArcGISProDir for Pro $ProTargetVersion." }
+$referenceVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($core).FileVersion
+if (-not $referenceVersion.StartsWith("1$ProTargetVersion.")) {
+    throw "Pro $ProTargetVersion requires matching references; found $referenceVersion at $core. Do not relabel a 3.7 build as 3.4."
+}
+$framework = if ($ProTargetVersion -eq "3.4") { "net8.0-windows" } else { "net10.0-windows" }
+$buildOutput = Join-Path $repository "artifacts\build\pro-$ProTargetVersion\$Configuration"
 
 function Step($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 
@@ -77,10 +91,12 @@ Step "Icons"
 # --- build -------------------------------------------------------------------
 
 Step "Build ($Configuration)"
-& dotnet build $project -c $Configuration --nologo -v minimal
+& dotnet build $project -c $Configuration --nologo -v minimal `
+    "-p:ProTargetVersion=$ProTargetVersion" "-p:ArcGISProDir=$ArcGISProDir" `
+    "-p:TargetFramework=$framework" "-p:OutputPath=$buildOutput" -p:DeployAddIn=false
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
-$addIn = Join-Path $repository "addin\ArcGISProMCP\bin\$Configuration\ArcGISProMCP.esriAddinX"
+$addIn = Join-Path $buildOutput "ArcGISProMCP.esriAddinX"
 if (-not (Test-Path $addIn)) { throw "The build produced no .esriAddinX at $addIn" }
 
 if (-not $SkipTests) {
@@ -88,6 +104,13 @@ if (-not $SkipTests) {
     & dotnet run --project (Join-Path $repository "tests\client-registration") `
         -c $Configuration --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "client-registration tests failed" }
+    # The transport is the one thing every HTTP client depends on, so it is
+    # checked on both frameworks the two Pro profiles use.
+    foreach ($testFramework in 'net8.0', 'net10.0') {
+        & dotnet run --project (Join-Path $repository "tests\http-transport") `
+            -f $testFramework -c $Configuration --nologo -v quiet
+        if ($LASTEXITCODE -ne 0) { throw "http-transport tests failed on $testFramework" }
+    }
 }
 
 # --- package -----------------------------------------------------------------
@@ -232,11 +255,55 @@ if ($errors) {
 
 # --- report ------------------------------------------------------------------
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::OpenRead($packaged)
+try {
+    $entry = $archive.GetEntry('Config.daml')
+    if (-not $entry -or -not $archive.GetEntry('Install/ArcGISProMCP.dll')) {
+        throw 'Package is missing Config.daml or Install/ArcGISProMCP.dll'
+    }
+    $reader = [IO.StreamReader]::new($entry.Open())
+    try { $manifest = [xml]$reader.ReadToEnd() } finally { $reader.Dispose() }
+    if ($manifest.ArcGIS.AddInInfo.desktopVersion -ne $ProTargetVersion -or
+        $manifest.ArcGIS.AddInInfo.version -ne $version) { throw 'Packaged manifest mismatch' }
+} finally { $archive.Dispose() }
+
+$embeddedMatch = [regex]::Match($psHalf, '(?s)\$payload = @''\r?\n(.*?)\r?\n''@')
+if (-not $embeddedMatch.Success) { throw 'Installer payload missing' }
+$embeddedBytes = [Convert]::FromBase64String(($embeddedMatch.Groups[1].Value -replace '\s', ''))
+$hasher = [Security.Cryptography.SHA256]::Create()
+try { $embeddedHash = ([BitConverter]::ToString($hasher.ComputeHash($embeddedBytes))).Replace('-', '') }
+finally { $hasher.Dispose() }
+$packageHash = (Get-FileHash -LiteralPath $packaged -Algorithm SHA256).Hash
+if ($embeddedHash -ne $packageHash) { throw 'Installer payload differs from package' }
+# Against the package just built, not a fixture: discovery and uninstall have
+# to work on the file people will actually download.
+if (-not $SkipTests) {
+    & powershell -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $repository 'tests\installer\test-installer.ps1') -Package $packaged
+    if ($LASTEXITCODE -ne 0) { throw "installer tests failed" }
+}
+
+[ordered]@{
+    status = 'candidate-not-certified'
+    version = $version
+    proTargetVersion = $ProTargetVersion
+    targetFramework = $framework
+    referenceVersion = $referenceVersion
+    configuration = $Configuration
+    signed = [bool]$Sign
+    registrationTests = $(if ($SkipTests) { 'skipped' } else { 'passed' })
+    runtimeValidation = 'pending: install exact candidate and test on each claimed Pro version'
+    packageSha256 = $packageHash
+    installerSha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash
+    gpParametersSha256 = (Get-FileHash (Join-Path $repository 'addin\ArcGISProMCP\Resources\gp-parameters.json')).Hash
+} | ConvertTo-Json | Set-Content (Join-Path $dist 'build-report.json') -Encoding UTF8
+
 Write-Host ""
-Write-Host "dist\" -ForegroundColor Green
+Write-Host "$dist (candidate; runtime validation required)" -ForegroundColor Green
 foreach ($file in Get-ChildItem $dist | Sort-Object Name) {
     "  {0,-32} {1,10:N0} bytes" -f $file.Name, $file.Length
 }
 Write-Host ""
 Write-Host "Install by double-clicking the .esriAddinX, or run the installer:"
-Write-Host "  dist\Install-ArcGISProMCP.cmd    (or double-click it)"
+Write-Host "  $outputPath"

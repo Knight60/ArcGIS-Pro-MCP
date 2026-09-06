@@ -238,7 +238,7 @@ namespace ArcGISProMCP.UI
                 : $"{client.Name}: not connected";
             Tooltip = registered
                 ? $"'arcgis' is in {client.ConfigPath}.\nClick to remove it."
-                : $"Click to add the 'arcgis' server to {client.ConfigPath}.";
+                : $"Click to add or update the 'arcgis' server in {client.ConfigPath}.";
         }
 
         /// <summary>
@@ -281,13 +281,13 @@ namespace ArcGISProMCP.UI
             // is reformatted" about Codex's config.toml was simply untrue.
             var caveat = !exists ? ""
                 : client.Shape == ConfigShape.Toml
-                    ? "The file is copied to .arcgis-mcp.bak first. One section is "
-                      + "appended; the rest of the file is left exactly as it is.\n\n"
+                    ? "The file is copied to .arcgis-mcp.bak first. The arcgis section "
+                      + "is replaced, including any old stdio settings. Other settings are kept.\n\n"
                     : "The file is copied to .arcgis-mcp.bak first. Rewriting the JSON "
                       + "reflows the whole file and drops any comments in it.\n\n";
 
             var question =
-                $"Add the 'arcgis' MCP server to {client.Name}?\n\n"
+                $"Add or update the 'arcgis' MCP server in {client.Name}?\n\n"
                 + $"File:  {client.ConfigPath}\n"
                 + (exists ? "" : "       (will be created)\n")
                 + $"How:   {how}\n\n"
