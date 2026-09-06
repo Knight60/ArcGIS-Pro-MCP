@@ -31,7 +31,7 @@ foreach (var c in McpClientCatalog.All)
                       + $"{c.Transport}  {c.ConfigPath}");
 }
 Console.WriteLine();
-Console.WriteLine($"stdio launcher: {McpClientRegistrar.StdioLauncher() ?? "(not installed)"}");
+Console.WriteLine($"stdio bridge: {McpClientRegistrar.EnsureStdioBridge()}");
 Console.WriteLine();
 
 // --- a JSON client with unrelated settings that must survive -----------------
@@ -167,6 +167,53 @@ File.WriteAllText(codex.ConfigPath, toml + "\n[mcp_servers.arcgis]");
 McpClientRegistrar.Register(codex);
 Check("toml: section at EOF replaced", File.ReadAllText(codex.ConfigPath)
     .Split("[mcp_servers.arcgis]").Length - 1 == 1);
+
+// --- a stdio client: the add-in writes the bridge and points the client at it -
+
+var desktop = Copy(McpClientCatalog.ById("claude-desktop"), "claude_desktop_config.json");
+File.WriteAllText(desktop.ConfigPath, """
+{
+  "mcpServers": {
+    "arcgis": { "command": "C:\\gone\\arcgis-pro-mcp.exe", "args": [] },
+    "other":  { "command": "npx", "args": ["-y", "something"] }
+  }
+}
+""");
+
+// The old relay registration is not usable, so the button must offer to
+// update it rather than to remove it.
+Check("stdio: relay registration needs update", !McpClientRegistrar.IsRegistered(desktop));
+Check("stdio: describing it does not throw",
+    McpClientRegistrar.DescribeConnection(desktop).Contains(McpClientCatalog.HttpUrl));
+
+McpClientRegistrar.Register(desktop);
+Check("stdio: registered after", McpClientRegistrar.IsRegistered(desktop));
+
+var bridge = McpClientRegistrar.EnsureStdioBridge();
+Check("stdio: bridge written", File.Exists(bridge), bridge);
+var bridgeText = File.ReadAllText(bridge);
+Check("stdio: bridge posts to the add-in", bridgeText.Contains(McpClientCatalog.HttpUrl));
+Check("stdio: bridge needs no Python or Node",
+    !bridgeText.Contains("arcgis-pro-mcp.exe") && !bridgeText.Contains("npx"));
+
+var desktopEntry = JsonNode.Parse(File.ReadAllText(desktop.ConfigPath))
+    .AsObject()["mcpServers"]["arcgis"].AsObject();
+Check("stdio: launched by Windows PowerShell",
+    ((string)desktopEntry["command"]).EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase),
+    (string)desktopEntry["command"]);
+var desktopArgs = desktopEntry["args"].AsArray().Select(a => (string)a).ToArray();
+Check("stdio: args point at the bridge",
+    desktopArgs.Contains(bridge) && desktopArgs.Contains("-NoProfile")
+    && desktopArgs.Contains("Bypass"),
+    string.Join(" ", desktopArgs));
+Check("stdio: no trace of the relay left",
+    !File.ReadAllText(desktop.ConfigPath).Contains("arcgis-pro-mcp.exe"));
+Check("stdio: other server kept",
+    JsonNode.Parse(File.ReadAllText(desktop.ConfigPath))
+        .AsObject()["mcpServers"].AsObject().ContainsKey("other"));
+
+McpClientRegistrar.Unregister(desktop);
+Check("stdio: gone after unregister", !McpClientRegistrar.IsRegistered(desktop));
 
 // Registering twice must not leave two copies of the section.
 McpClientRegistrar.Register(codex);

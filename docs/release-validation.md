@@ -6,7 +6,12 @@ certified for any other Pro version** -- do not publish as dual-version support.
 ## Changes
 
 Add-in 1.1.1 registers Codex at `http://127.0.0.1:6520/mcp` using a TOML
-`url`, without a Python launcher. Registration replaces the previous canonical
+`url`, without a Python launcher. No client button can now dead-end on a
+missing dependency: Claude Desktop can only launch a server, so the add-in
+writes a PowerShell bridge to `%LOCALAPPDATA%\ArcGIS Pro MCP\stdio-bridge.ps1`
+and registers Claude Desktop to run it. Windows PowerShell ships with Windows,
+so nothing has to be installed first, and the external Python relay is no
+longer referenced by the add-in at all. Registration replaces the previous canonical
 `[mcp_servers.arcgis]` and its subtables, and backs up the existing config.
 Other clients retain their transports. Existing client settings are changed
 when the user registers, not automatically when installing the add-in.
@@ -23,7 +28,7 @@ Candidates and installers are separate from `dist`, and build does not deploy.
 | Installed reference environment | Pro 3.7, ArcGIS.Core file 13.7.0.1901, assembly 13.7.0.0, .NET 10 |
 | Pro 3.4 reference environment | Not found in the inspected installation/workspace locations; required before compile audit |
 | Pro 3.7 Release compilation | Passed, zero warnings/errors |
-| Client registration | 27 checks passed, including LF/CRLF migration, exact pre-write backup, unrelated settings, repeat registration and EOF header |
+| Client registration | 42 checks passed, including LF/CRLF migration, exact pre-write backup, unrelated settings, repeat registration and EOF header |
 | HTTP source integration | Passed on .NET 8 and .NET 10 with real HttpListener and fake GIS dispatcher; no Pro API validation |
 | Candidate loaded in Pro 3.7 | Signed 1.1.1 installed, Pro restarted, bridge reports 1.1.1.0; initialize, notification, ping, 112 tools and read-only get_project_info passed |
 | Codex Streamable HTTP | `codex.exe` accepts a bare `url` (no `transport` key) and its rmcp client completed the session against the live add-in: no transport errors, while a dead port produced `worker quit with fatal` immediately |
@@ -36,6 +41,7 @@ Candidates and installers are separate from `dist`, and build does not deploy.
 | Install from the released file alone | Simulated on this machine: only `Install-ArcGISProMCP.cmd` in a folder, carrying a download's Mark-of-the-Web, no repository and no `.esriAddinX` beside it. Installed, Pro restarted, bridge answered 1.1.1.0 |
 | Codex on a machine with no relay | Virgin `CODEX_HOME`, config holding only the bytes the ribbon button writes: `codex mcp list` resolved it, the session connected with no transport error, and no `arcgis-pro-mcp.exe` process was spawned |
 | Untrusted publisher at default security | Not simulated: this machine keeps `BlockAddIns` = 1 with the build certificate trusted. A machine that trusts neither, at the default 0, is untested |
+| Generated stdio bridge | The official MCP stdio client ran the bridge as a server against the live add-in: initialize reported 1.1.1.0, 112 tools listed, `get_project_info` answered, and an unknown tool came back as an error rather than a dropped message. Against a dead port it answers a request with a JSON-RPC error and leaves a notification unanswered, as the transport requires |
 | 1.1.0 failure reproduced in the field | Confirmed on a second machine: clicking Codex raises "it needs the Python relay -- and arcgis-pro-mcp.exe is not installed" and writes nothing, because `DescribeConnection` calls `RequireLauncher` before the confirmation dialog is built |
 | Installation of 1.1.1 on a machine other than the build machine | Pending |
 | Pro 3.4 compilation/runtime | Pending genuine 3.4 references and runtime |

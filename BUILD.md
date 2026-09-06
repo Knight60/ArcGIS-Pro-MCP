@@ -115,7 +115,8 @@ dotnet run --project tests\http-transport -f net8.0
 dotnet run --project tests\http-transport -f net10.0
 python -m pytest tests\                           # catalog drift, mock end-to-end
 python tests\test_end_to_end_mock.py              # explicit script entry point
-python scripts\test_http.py --expected-version 1.1.1.0  # installed candidate only
+python scripts\test_http.py --expected-version 1.1.1.0         # installed candidate only
+python scripts\test_stdio_bridge.py --expected-version 1.1.1.0  # the launched-client path
 ```
 
 `client-registration` exercises the AI-client config writing against **copies**
@@ -124,6 +125,9 @@ settings, backup contents, legacy stdio replacement, CRLF/LF files, and duplicat
 prevention. JSON formatting and trailing TOML whitespace can change. The HTTP
 tests use the real HTTP server and a fake GIS dispatcher on loopback port 16520;
 they verify transport compatibility, not Pro API or add-in loading compatibility.
+`test_stdio_bridge.py` runs the official MCP stdio client against the bridge the
+add-in generates for clients that can only launch a server, which is the only
+test that covers that path end to end.
 
 Against a live ArcGIS Pro (Pro must be open):
 

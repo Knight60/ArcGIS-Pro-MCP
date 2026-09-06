@@ -183,30 +183,97 @@ namespace ArcGISProMCP.Clients
         };
 
         /// <summary>
-        /// The Python relay, for the clients that can only launch a server.
-        /// Null when it is not installed, which is worth saying out loud
-        /// rather than writing a config that points at nothing.
+        /// A client that can only launch a server still has to reach the same
+        /// HTTP endpoint as every other client, so the add-in writes the piece
+        /// that joins the two and points the client at that. Windows PowerShell
+        /// ships with Windows, which is the whole point: nothing for the user
+        /// to install first, no Python, no Node, no pip.
         /// </summary>
-        public static string StdioLauncher()
+        private const string StdioBridgeScript = @"# ArcGIS Pro MCP -- stdio to HTTP bridge.
+#
+# Written by the ArcGIS Pro MCP add-in, not by hand. Clients that can only
+# launch a server run this, and it forwards each JSON-RPC message to the
+# add-in listening inside ArcGIS Pro. It is rewritten whenever the add-in
+# registers a client, so an edit here does not survive.
+
+$ErrorActionPreference = 'Stop'
+$url = '__URL__'
+
+Add-Type -AssemblyName System.Net.Http
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8
+[Console]::InputEncoding = $utf8
+
+$client = New-Object System.Net.Http.HttpClient
+# Geoprocessing can take a while, and a timeout here would look like the tool
+# failing rather than still running.
+$client.Timeout = [TimeSpan]::FromMinutes(30)
+[void]$client.DefaultRequestHeaders.Accept.ParseAdd('application/json')
+[void]$client.DefaultRequestHeaders.Accept.ParseAdd('text/event-stream')
+
+while ($null -ne ($line = [Console]::In.ReadLine())) {
+    if ($line.Trim().Length -eq 0) { continue }
+    try {
+        $content = New-Object System.Net.Http.StringContent($line, $utf8, 'application/json')
+        $response = $client.PostAsync($url, $content).GetAwaiter().GetResult()
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    } catch {
+        # ArcGIS Pro is closed, or the bridge is stopped. A request carries an
+        # id and is owed an answer; a notification has none and expects silence.
+        $id = $null
+        try { $id = (ConvertFrom-Json $line).id } catch { }
+        if ($null -eq $id) { continue }
+        $body = @{
+            jsonrpc = '2.0'
+            id      = $id
+            error   = @{
+                code    = -32000
+                message = ""ArcGIS Pro is not answering on $url. Open ArcGIS Pro and check that the MCP tab shows the bridge running.""
+            }
+        } | ConvertTo-Json -Compress -Depth 6
+    }
+    # A notification gets 202 and no body, so there is nothing to write.
+    if (-not [string]::IsNullOrEmpty($body)) {
+        [Console]::Out.Write($body + ""`n"")
+        [Console]::Out.Flush()
+    }
+}
+";
+
+        private static string StdioBridgePath() => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ArcGIS Pro MCP", "stdio-bridge.ps1");
+
+        /// <summary>
+        /// Writes the bridge and returns its path. Rewritten when it differs,
+        /// so upgrading the add-in fixes the bridge at the next registration
+        /// rather than leaving an old one behind.
+        /// </summary>
+        public static string EnsureStdioBridge()
         {
-            var candidates = new List<string>();
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var python = Path.Combine(appData, "Python");
-            if (Directory.Exists(python))
-            {
-                foreach (var version in Directory.GetDirectories(python))
-                    candidates.Add(Path.Combine(version, "Scripts", "arcgis-pro-mcp.exe"));
-            }
-
-            var pathVariable = Environment.GetEnvironmentVariable("PATH") ?? "";
-            foreach (var folder in pathVariable.Split(Path.PathSeparator))
-            {
-                if (string.IsNullOrWhiteSpace(folder)) continue;
-                candidates.Add(Path.Combine(folder.Trim(), "arcgis-pro-mcp.exe"));
-            }
-
-            return candidates.FirstOrDefault(File.Exists);
+            var path = StdioBridgePath();
+            var wanted = StdioBridgeScript.Replace("__URL__", McpClientCatalog.HttpUrl);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (!File.Exists(path) || File.ReadAllText(path) != wanted)
+                File.WriteAllText(path, wanted, new UTF8Encoding(false));
+            return path;
         }
+
+        /// <summary>
+        /// The full path: a launched server gets no shell, so no PATH lookup.
+        /// </summary>
+        private static string PowerShellPath()
+        {
+            var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            var full = Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+            return File.Exists(full) ? full : "powershell.exe";
+        }
+
+        // The params constructor takes JsonNode, so each string converts to a
+        // plain JSON value. A collection initializer would call Add<T> and build
+        // a customized value instead, which will not serialize without a resolver.
+        private static JsonArray StdioArguments(string bridge) => new JsonArray(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", bridge);
 
         public static bool IsRegistered(McpClient client)
         {
@@ -230,7 +297,12 @@ namespace ArcGISProMCP.Clients
 
                 var root = JsonNode.Parse(text, null, Lenient) as JsonObject;
                 var section = root?[SectionName(client)] as JsonObject;
-                return section != null && section.ContainsKey(client.ServerName);
+                if (section?[client.ServerName] is not JsonObject entry) return false;
+                if (client.Transport != Transport.Stdio) return true;
+                // Pointing at the old Python relay is not ready to use, so
+                // report it as unregistered and let the button update it.
+                return entry["args"] is JsonArray arguments
+                    && arguments.Any(a => (string)a == StdioBridgePath());
             }
             catch (Exception)
             {
@@ -250,22 +322,13 @@ namespace ArcGISProMCP.Clients
         {
             if (client.Transport == Transport.Http)
                 return $"connects to {McpClientCatalog.HttpUrl}";
-            return $"launches {RequireLauncher(client)}";
-        }
-
-        private static string RequireLauncher(McpClient client)
-        {
-            return StdioLauncher() ?? throw new InvalidOperationException(
-                $"{client.Name} launches an MCP server rather than connecting to a "
-                + "URL, so it needs the Python relay -- and arcgis-pro-mcp.exe is not "
-                + "installed. Install it with:\n\n"
-                + "    pip install git+https://github.com/Knight60/ArcGIS-Pro-MCP");
+            return $"launches a PowerShell bridge to {McpClientCatalog.HttpUrl}";
         }
 
         public static string Register(McpClient client)
         {
             var launcher = client.Transport == Transport.Stdio
-                ? RequireLauncher(client)
+                ? EnsureStdioBridge()
                 : null;
 
             Directory.CreateDirectory(Path.GetDirectoryName(client.ConfigPath));
@@ -333,8 +396,8 @@ namespace ArcGISProMCP.Clients
             {
                 entry = new JsonObject
                 {
-                    ["command"] = launcher,
-                    ["args"] = new JsonArray(),
+                    ["command"] = PowerShellPath(),
+                    ["args"] = StdioArguments(launcher),
                 };
             }
 

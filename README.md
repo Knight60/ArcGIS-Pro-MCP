@@ -165,16 +165,22 @@ state you are in. Everything else in the file is left alone. Restart Codex
 afterwards. Installing the add-in never rewrites a client config on its own.
 See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-The Claude Desktop registration still uses the Python relay. It is not on
-PyPI yet; install it from this repository:
+Claude Desktop is the one client that cannot dial out to a server — it can
+only launch one. So the add-in writes the missing piece itself: a small
+PowerShell bridge at `%LOCALAPPDATA%\ArcGIS Pro MCP\stdio-bridge.ps1` that
+forwards each message to the same HTTP endpoint, and registers Claude Desktop
+to run it:
 
-```powershell
-pip install git+https://github.com/Knight60/ArcGIS-Pro-MCP
+```json
+{ "mcpServers": { "arcgis": {
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+             "C:\\Users\\you\\AppData\\Local\\ArcGIS Pro MCP\\stdio-bridge.ps1"] } } }
 ```
 
-That puts `arcgis-pro-mcp.exe` on your PATH, which is what the stdio client
-should be pointed at. The ribbon buttons do this for you and will say so if the
-relay is missing.
+Windows PowerShell ships with Windows, so there is still nothing to install —
+no Python, no Node, no pip. The bridge is rewritten whenever you register a
+client, so upgrading the add-in upgrades it too.
 
 </details>
 
