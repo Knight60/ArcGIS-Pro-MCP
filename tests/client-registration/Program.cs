@@ -19,20 +19,10 @@ void Check(string what, bool ok, string detail = null)
 
 var sandbox = Path.Combine(Path.GetTempPath(), "mcp-client-test-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(sandbox);
+McpClientRegistrar.TestStdioBridgePath = Path.Combine(sandbox, "stdio-bridge.ps1");
 
-// --- detection on this machine, read only ------------------------------------
-
-Console.WriteLine("Detected on this machine:");
-foreach (var c in McpClientCatalog.All)
-{
-    var installed = c.IsInstalled;
-    var registered = installed && McpClientRegistrar.IsRegistered(c);
-    Console.WriteLine($"  {c.Name,-16} installed={installed,-5} registered={registered,-5} "
-                      + $"{c.Transport}  {c.ConfigPath}");
-}
-Console.WriteLine();
-Console.WriteLine($"stdio bridge: {McpClientRegistrar.EnsureStdioBridge()}");
-Console.WriteLine();
+// Write only synthetic configurations; never print profile paths into test/CI logs.
+Check("stdio bridge created in test directory", File.Exists(McpClientRegistrar.EnsureStdioBridge()));
 
 // --- a JSON client with unrelated settings that must survive -----------------
 
@@ -72,9 +62,9 @@ Check("json: unrelated keys kept",
 Check("json: other server kept",
     written["mcpServers"]["qgis"] != null);
 Check("json: http entry shape",
-    (string)written["mcpServers"]["arcgis"]["url"] == McpClientCatalog.HttpUrl
-    && (string)written["mcpServers"]["arcgis"]["type"] == "http",
-    written["mcpServers"]["arcgis"].ToJsonString());
+    (string)written["mcpServers"]["arcgis_knight60"]["url"] == McpClientCatalog.HttpUrl
+    && (string)written["mcpServers"]["arcgis_knight60"]["type"] == "http",
+    written["mcpServers"]["arcgis_knight60"].ToJsonString());
 Check("json: backup written", File.Exists(claude.ConfigPath + ".arcgis-mcp.bak"));
 
 McpClientRegistrar.Unregister(claude);
@@ -89,16 +79,16 @@ var antigravity = Copy(McpClientCatalog.ById("antigravity"), "antigravity.json")
 McpClientRegistrar.Register(antigravity);
 var ag = JsonNode.Parse(File.ReadAllText(antigravity.ConfigPath)).AsObject();
 Check("antigravity: serverUrl, no type",
-    (string)ag["mcpServers"]["arcgis"]["serverUrl"] == McpClientCatalog.HttpUrl
-    && ag["mcpServers"]["arcgis"]["type"] == null,
-    ag["mcpServers"]["arcgis"].ToJsonString());
+    (string)ag["mcpServers"]["arcgis_knight60"]["serverUrl"] == McpClientCatalog.HttpUrl
+    && ag["mcpServers"]["arcgis_knight60"]["type"] == null,
+    ag["mcpServers"]["arcgis_knight60"].ToJsonString());
 
 // --- VS Code uses "servers", not "mcpServers" --------------------------------
 
 var vscode = Copy(McpClientCatalog.ById("vscode"), "vscode.json");
 McpClientRegistrar.Register(vscode);
 var vs = JsonNode.Parse(File.ReadAllText(vscode.ConfigPath)).AsObject();
-Check("vscode: under servers", vs["servers"]?["arcgis"] != null && vs["mcpServers"] == null);
+Check("vscode: under servers", vs["servers"]?["arcgis_knight60"] != null && vs["mcpServers"] == null);
 
 // --- TOML, the one that edits text rather than a parse tree ------------------
 
@@ -113,7 +103,7 @@ command = 'C:\node_repl.exe'
 startup_timeout_sec = 120
 
 [mcp_servers.node_repl.env]
-CODEX_HOME = 'C:\Users\x\.codex'
+CODEX_HOME = 'C:\ExampleProfile\.codex'
 
 [plugins."browser@openai-bundled"]
 enabled = true
@@ -132,29 +122,29 @@ Check("toml: other server kept whole",
 Check("toml: unrelated tables kept",
     tomlAfter.Contains("[plugins.\"browser@openai-bundled\"]")
     && tomlAfter.Contains("model = \"gpt-5.5\""));
-Check("toml: our section added", tomlAfter.Contains("[mcp_servers.arcgis]"));
+Check("toml: our section added", tomlAfter.Contains("[mcp_servers.arcgis_knight60]"));
 Check("codex: direct HTTP transport", codex.Transport == Transport.Http);
 Check("toml: HTTP URL without relay", tomlAfter.Contains($"url = \"{McpClientCatalog.HttpUrl}\"")
-    && !tomlAfter.Contains("arcgis-pro-mcp.exe"));
+    && !tomlAfter.Contains("arcgis_knight60-pro-mcp.exe"));
 Check("toml: original backup", File.ReadAllText(codex.ConfigPath + ".arcgis-mcp.bak") == toml);
 
 foreach (var newline in new[] { "\n", "\r\n" })
 {
-    var legacy = toml + newline + "[mcp_servers.arcgis]" + newline
-        + "command = 'C:\\missing\\arcgis-pro-mcp.exe'" + newline + "args = []" + newline
-        + "[mcp_servers.arcgis.env]" + newline + "OLD_RELAY = 'yes'" + newline
-        + "[mcp_servers.arcgis_other]" + newline + "url = 'http://other'" + newline;
+    var legacy = toml + newline + "[mcp_servers.arcgis_knight60]" + newline
+        + "command = 'C:\\missing\\arcgis_knight60-pro-mcp.exe'" + newline + "args = []" + newline
+        + "[mcp_servers.arcgis_knight60.env]" + newline + "OLD_RELAY = 'yes'" + newline
+        + "[mcp_servers.arcgis_knight60_other]" + newline + "url = 'http://other'" + newline;
     File.WriteAllText(codex.ConfigPath, legacy);
     Check("toml: legacy stdio needs update", !McpClientRegistrar.IsRegistered(codex));
     McpClientRegistrar.Register(codex);
     var migrated = File.ReadAllText(codex.ConfigPath);
     Check("toml: legacy migration " + newline.Length,
         migrated.StartsWith(toml) && !migrated.Contains("OLD_RELAY")
-        && !migrated.Contains("missing") && migrated.Contains("[mcp_servers.arcgis_other]")
+        && !migrated.Contains("missing") && migrated.Contains("[mcp_servers.arcgis_knight60_other]")
         && migrated.Contains($"url = \"{McpClientCatalog.HttpUrl}\""));
-    Check("toml: migration backup", File.ReadAllText(codex.ConfigPath + ".arcgis-mcp.bak") == legacy);
+    Check("toml: migration backup", Directory.GetFiles(sandbox, "*.arcgis-mcp.bak*").Any(p => File.ReadAllText(p) == legacy));
 }
-foreach (var key in new[] { "\"arcgis\"", "'arcgis'" })
+foreach (var key in new[] { "\"arcgis_knight60\"", "'arcgis_knight60'" })
 {
     File.WriteAllText(codex.ConfigPath, toml + $"\n[mcp_servers.{key}]\ncommand = 'missing.exe'\n");
     McpClientRegistrar.Register(codex);
@@ -163,10 +153,10 @@ foreach (var key in new[] { "\"arcgis\"", "'arcgis'" })
         && !migrated.Contains("missing.exe") && !migrated.Contains($"[mcp_servers.{key}]")
         && migrated.StartsWith(toml));
 }
-File.WriteAllText(codex.ConfigPath, toml + "\n[mcp_servers.arcgis]");
+File.WriteAllText(codex.ConfigPath, toml + "\n[mcp_servers.arcgis_knight60]");
 McpClientRegistrar.Register(codex);
 Check("toml: section at EOF replaced", File.ReadAllText(codex.ConfigPath)
-    .Split("[mcp_servers.arcgis]").Length - 1 == 1);
+    .Split("[mcp_servers.arcgis_knight60]").Length - 1 == 1);
 
 // --- Claude Desktop ships packaged and unpackaged, with different paths ------
 
@@ -191,8 +181,7 @@ Check(packaged == null
         ? installedDesktop.ConfigPath == Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Claude", "claude_desktop_config.json")
-        : Path.GetDirectoryName(installedDesktop.ConfigPath) == packaged,
-    installedDesktop.ConfigPath);
+        : Path.GetDirectoryName(installedDesktop.ConfigPath) == packaged);
 
 // --- a stdio client: the add-in writes the bridge and points the client at it -
 
@@ -200,7 +189,7 @@ var desktop = Copy(McpClientCatalog.ById("claude-desktop"), "claude_desktop_conf
 File.WriteAllText(desktop.ConfigPath, """
 {
   "mcpServers": {
-    "arcgis": { "command": "C:\\gone\\arcgis-pro-mcp.exe", "args": [] },
+    "arcgis_knight60": { "command": "C:\\gone\\arcgis_knight60-pro-mcp.exe", "args": [] },
     "other":  { "command": "npx", "args": ["-y", "something"] }
   }
 }
@@ -216,24 +205,22 @@ McpClientRegistrar.Register(desktop);
 Check("stdio: registered after", McpClientRegistrar.IsRegistered(desktop));
 
 var bridge = McpClientRegistrar.EnsureStdioBridge();
-Check("stdio: bridge written", File.Exists(bridge), bridge);
+Check("stdio: bridge written", File.Exists(bridge));
 var bridgeText = File.ReadAllText(bridge);
 Check("stdio: bridge posts to the add-in", bridgeText.Contains(McpClientCatalog.HttpUrl));
 Check("stdio: bridge needs no Python or Node",
-    !bridgeText.Contains("arcgis-pro-mcp.exe") && !bridgeText.Contains("npx"));
+    !bridgeText.Contains("arcgis_knight60-pro-mcp.exe") && !bridgeText.Contains("npx"));
 
 var desktopEntry = JsonNode.Parse(File.ReadAllText(desktop.ConfigPath))
-    .AsObject()["mcpServers"]["arcgis"].AsObject();
+    .AsObject()["mcpServers"]["arcgis_knight60"].AsObject();
 Check("stdio: launched by Windows PowerShell",
-    ((string)desktopEntry["command"]).EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase),
-    (string)desktopEntry["command"]);
+    ((string)desktopEntry["command"]).EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase));
 var desktopArgs = desktopEntry["args"].AsArray().Select(a => (string)a).ToArray();
 Check("stdio: args point at the bridge",
     desktopArgs.Contains(bridge) && desktopArgs.Contains("-NoProfile")
-    && desktopArgs.Contains("Bypass"),
-    string.Join(" ", desktopArgs));
+    && desktopArgs.Contains("Bypass"));
 Check("stdio: no trace of the relay left",
-    !File.ReadAllText(desktop.ConfigPath).Contains("arcgis-pro-mcp.exe"));
+    !File.ReadAllText(desktop.ConfigPath).Contains("arcgis_knight60-pro-mcp.exe"));
 Check("stdio: other server kept",
     JsonNode.Parse(File.ReadAllText(desktop.ConfigPath))
         .AsObject()["mcpServers"].AsObject().ContainsKey("other"));
@@ -245,15 +232,15 @@ Check("stdio: gone after unregister", !McpClientRegistrar.IsRegistered(desktop))
 McpClientRegistrar.Register(codex);
 var twice = File.ReadAllText(codex.ConfigPath);
 Check("toml: register twice is idempotent",
-    twice.Split("[mcp_servers.arcgis]").Length - 1 == 1,
-    $"{twice.Split("[mcp_servers.arcgis]").Length - 1} copies");
+    twice.Split("[mcp_servers.arcgis_knight60]").Length - 1 == 1,
+    $"{twice.Split("[mcp_servers.arcgis_knight60]").Length - 1} copies");
 
 McpClientRegistrar.Unregister(codex);
 var removed = File.ReadAllText(codex.ConfigPath);
 Check("toml: gone after unregister", !McpClientRegistrar.IsRegistered(codex));
 Check("toml: node_repl still intact",
     removed.Contains("[mcp_servers.node_repl]")
-    && removed.Contains("CODEX_HOME = 'C:\\Users\\x\\.codex'"));
+    && removed.Contains("CODEX_HOME = 'C:\\ExampleProfile\\.codex'"));
 Check("toml: nothing else lost",
     removed.Contains("model = \"gpt-5.5\"")
     && removed.Contains("[plugins.\"browser@openai-bundled\"]"));

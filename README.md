@@ -1,5 +1,14 @@
 # ArcGIS Pro MCP
 
+> **Local hardened fork (1.1.2):** authenticated read-only access by default, 15 read tools,
+> three explicitly enabled layer-display edits, and 94 disabled high-risk/unreviewed tools.
+> The upstream feature descriptions below do not override this policy. Read
+> [SECURITY.md](SECURITY.md) and the [review/test record](docs/security-review-2026-09-28.md).
+> Old upstream binaries are not hardened and are excluded from the publication snapshot.
+> Build this source and use authenticated client registration. See [PUBLICATION.md](PUBLICATION.md)
+> for the source-only upload process. The original installation/feature guide below is historical:
+> its upstream release links, arbitrary execution, and policy-changing advice do not apply to this fork.
+
 **An ArcGIS Pro add-in that lets you say what you want.**
 
 It implements the [Model Context Protocol](https://modelcontextprotocol.io)
@@ -45,12 +54,8 @@ error says so and how to start it, rather than failing obscurely.
 The practical effect is that there is no such thing as "the tool for that is
 missing". If it can be done in ArcGIS Pro, it can be asked for in a sentence.
 
-![Five requests in plain language, each changing the map: symbology, selection, zoom, labels](docs/images/demo.gif)
-
-*Every frame above was rendered by the add-in itself, running the request in
-the caption. Rebuild it with `python scripts/make_demo_gif.py`.*
-
-![The MCP tab in ArcGIS Pro, with Thailand's provinces graduated by area](docs/images/mcp-menu.png)
+Screenshots and map demonstrations are deliberately omitted from the source-only
+publication snapshot. Captures can expose project, account, and dataset details.
 
 ---
 
@@ -186,7 +191,7 @@ to run it:
 { "mcpServers": { "arcgis": {
     "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-             "C:\\Users\\you\\AppData\\Local\\ArcGIS Pro MCP\\stdio-bridge.ps1"] } } }
+             "C:\\ExampleProfile\\AppData\\Local\\ArcGIS Pro MCP\\stdio-bridge.ps1"] } } }
 ```
 
 Windows PowerShell ships with Windows, so there is still nothing to install —
@@ -404,7 +409,7 @@ Run `Install-ArcGISProMCP.cmd`; it will say so and offer the two ways round it.
 The setting itself is in ArcGIS Pro under **Project ▸ Add-In Manager ▸
 Options**:
 
-![ArcGIS Pro Add-In Manager, Options tab, showing the three add-in security settings](docs/images/add-in-manager.png)
+The historical Add-In Manager screenshot is omitted from the publication snapshot.
 
 The middle setting is the one this add-in is signed for. The bottom one loads
 anything. [What each choice means](docs/addin.md#signing-the-add-in).

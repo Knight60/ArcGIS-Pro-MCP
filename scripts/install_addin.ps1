@@ -58,6 +58,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($AllowAllAddIns -or $TrustPublisher) { throw 'This hardened installer will not lower add-in security or import root certificates. Ask your administrator to approve a trusted, signed deployment.' }
 
 function Say($text) { Write-Host $text }
 function Warn($text) { Write-Host $text -ForegroundColor Yellow }
@@ -121,8 +122,24 @@ function Find-InstalledCopies {
     # error anyone is told about -- Pro loads one of them and the other's
     # changes appear not to take effect, which is a bad afternoon.
     if (-not (Test-Path $target)) { return @() }
-    return @(Get-ChildItem $target -Recurse -Filter "*.esriAddinX" -ErrorAction SilentlyContinue |
-             Where-Object { Get-AddInVersion $_.FullName })
+    return @(Get-ChildItem -LiteralPath $target -Recurse -Filter "*.esriAddinX" -ErrorAction SilentlyContinue |
+             Where-Object { (Test-SafeInstallPath $_.FullName) -and (Get-AddInVersion $_.FullName) })
+}
+
+function Test-SafeInstallPath([string]$path) {
+    $rootPath = [IO.Path]::GetFullPath($target).TrimEnd('\')
+    $fullPath = [IO.Path]::GetFullPath($path)
+    if (-not $fullPath.StartsWith($rootPath + '\', [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $cursor = $fullPath
+    while ($cursor) {
+        if (Test-Path -LiteralPath $cursor) {
+            if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+        }
+        $parentPath = Split-Path -Parent $cursor
+        if ($parentPath -eq $cursor) { break }
+        $cursor = $parentPath
+    }
+    return $true
 }
 
 function Remove-EmptyAddInFolders {
@@ -131,16 +148,19 @@ function Remove-EmptyAddInFolders {
     # it, so uninstalling looks like it half worked. Only empty ones go: a
     # folder with anything in it is somebody else's.
     if (-not (Test-Path -LiteralPath $target)) { return }
-    Get-ChildItem -LiteralPath $target -Directory -ErrorAction SilentlyContinue |
-        Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Recurse -Force -File -ErrorAction SilentlyContinue) } |
-        ForEach-Object {
-            Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-            if (-not (Test-Path -LiteralPath $_.FullName)) { Good "Removed the empty $($_.Name) folder" }
+    $owned = Join-Path ([IO.Path]::GetFullPath($target)) '{2e4cb7d3-56a7-4caf-911f-390b5821de61}'
+    if (Test-Path -LiteralPath $owned) {
+        $item = Get-Item -LiteralPath $owned -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
+            -not (Get-ChildItem -LiteralPath $owned -Force)) {
+            Remove-Item -LiteralPath $owned -Force
         }
+    }
 }
 
 function Uninstall-AddIn($copies) {
     foreach ($copy in $copies) {
+        if (-not (Test-SafeInstallPath $copy.FullName)) { throw 'Refusing to remove an add-in outside the validated install directory or through a link.' }
         Remove-Item -LiteralPath $copy.FullName -Force
         Good "Removed $($copy.FullName)"
     }
@@ -255,12 +275,14 @@ if (-not $CheckOnly) {
 $stale = Find-InstalledCopies |
     Where-Object { $_.FullName -ne (Join-Path $target "ArcGISProMCP.esriAddinX") }
 foreach ($copy in $stale) {
+    if (-not (Test-SafeInstallPath $copy.FullName)) { throw 'Unsafe stale add-in path.' }
     Remove-Item -LiteralPath $copy.FullName -Force
     Say "Removed an older copy: $($copy.FullName)"
 }
 if ($stale) { Remove-EmptyAddInFolders }
 
 New-Item -ItemType Directory -Force $target | Out-Null
+if (-not (Test-SafeInstallPath (Join-Path $target 'ArcGISProMCP.esriAddinX'))) { throw 'Unsafe add-in destination path.' }
 Copy-Item $AddInPath (Join-Path $target "ArcGISProMCP.esriAddinX") -Force
 Good "Installed to $target"
 } else {
@@ -346,8 +368,8 @@ if ($willLoad) {
         exit 0
     }
     Good "Ready. Restart ArcGIS Pro and look for the MCP tab."
-    Say  "Then point your AI client at it from that tab, or run:"
-    Say  "  claude mcp add --transport http arcgis http://127.0.0.1:6520/mcp"
+    Say  "Register your AI client using the MCP ribbon to configure authentication."
+    Say  "Unauthenticated URLs and the legacy Python/TCP relay will not work."
     Say  'Codex: click Codex on the MCP tab to add/update HTTP registration, then restart Codex.'
     exit 0
 }

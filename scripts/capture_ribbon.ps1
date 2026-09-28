@@ -13,13 +13,15 @@
     captures that window only, not the desktop.
 
 .PARAMETER Output
-    Where to write the PNG. Defaults to docs/images/mcp-menu.png.
+    Where to write the PNG. Defaults to artifacts/screenshots/mcp-menu.png.
+    Captures may expose project, account, and dataset details. Review/redact
+    both pixels and image metadata before deliberately publishing any capture.
 
 .PARAMETER Delay
     Seconds to wait before capturing, to let the window finish drawing.
 #>
 param(
-    [string]$Output = (Join-Path $PSScriptRoot '..\docs\images\mcp-menu.png'),
+    [string]$Output = (Join-Path $PSScriptRoot '..\artifacts\screenshots\mcp-menu.png'),
     [int]$Delay = 2
 )
 

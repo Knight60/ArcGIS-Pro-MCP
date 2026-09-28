@@ -10,10 +10,9 @@ uv.lock
 ArcGISMCP.*.pyt.xml
 *.pyt.xml
 
-# dist/ holds the released add-in and installer, and those ARE committed --
-# GitHub Actions has no ArcGIS Pro to build against, so a release can only be
-# produced on a machine that has it. Python's own build writes wheels into the
-# same folder, and those are not wanted.
+# Upstream tracked release binaries in dist/. This fork's source publication
+# excludes those historical files even if tracked; see PUBLICATION.md.
+# Python build products are also excluded.
 dist/*.whl
 dist/*.tar.gz
 
@@ -24,6 +23,30 @@ addin/**/obj/
 # C# test project build output
 tests/**/bin/
 tests/**/obj/
+scripts/**/bin/
+scripts/**/obj/
 
 # Backups this project's own tooling writes
 *.arcgis-mcp.bak
+*.arcgis-mcp.bak.*
+http-token.txt
+
+# Private credentials, diagnostics, and local GIS datasets are never source assets.
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+*.log
+*.dmp
+*.aprx
+*.gdb/
+
+# Historical tracked binaries/images still exist locally; the publication
+# exporter excludes them regardless of Git tracking. Do not push this checkout
+# wholesale. See PUBLICATION.md.
+dist/*.esriAddinX
+dist/*.cmd
+dist/build-report.json
+docs/images/

@@ -47,8 +47,8 @@ async def run(expected_version):
             print(f"PASS bridge initialize: {info.name} {info.version}")
 
             tools = await session.list_tools()
-            if len(tools.tools) != 112:
-                raise SystemExit(f"FAIL bridge listed {len(tools.tools)} tools, expected 112")
+            if len(tools.tools) != 18:
+                raise SystemExit(f"FAIL bridge listed {len(tools.tools)} tools, expected 18")
             print(f"PASS bridge tools/list ({len(tools.tools)} tools)")
 
             result = await session.call_tool("get_project_info", {})

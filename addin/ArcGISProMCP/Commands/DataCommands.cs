@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using ArcGIS.Core.Data;
 using ArcGIS.Desktop.Mapping;
 using ArcGISProMCP.Bridge;
@@ -12,6 +13,16 @@ namespace ArcGISProMCP.Commands
     {
         private const string Group = "data";
         private const int MaxRows = 5000;
+        private const int MaxScanRows = 100000;
+        private sealed class ByteBudget
+        {
+            private long _bytes;
+            public void Observe(object value)
+            {
+                _bytes += JsonSerializer.SerializeToUtf8Bytes(value).Length;
+                if (_bytes > 2 * 1024 * 1024) throw new InvalidOperationException("Query exceeds the 2 MiB materialization budget; narrow fields/limit.");
+            }
+        }
 
         public static void Register()
         {
@@ -143,7 +154,10 @@ namespace ArcGISProMCP.Commands
             var offset = Math.Max(parameters.GetInt("offset"), 0);
             var includeGeometry = parameters.GetBool("include_geometry");
 
-            var fields = parameters.GetStringList("fields") ?? ReadableFields(source);
+            var available = ReadableFields(source);
+            var fields = parameters.GetStringList("fields") ?? available.Take(64).ToList();
+            if (fields.Any(f => !available.Contains(f, StringComparer.OrdinalIgnoreCase)))
+                throw new ArgumentException("Unknown or non-readable field.");
             var filter = BuildFilter(parameters, includeGeometry ? null : fields);
 
             var orderBy = ParseOrderBy(parameters.GetString("order_by"));
@@ -153,6 +167,7 @@ namespace ArcGISProMCP.Commands
             var readCap = orderBy == null ? offset + limit : MaxRows;
 
             var rows = new List<Dictionary<string, object>>();
+            var budget = new ByteBudget();
             var truncated = false;
 
             using (var cursor = source.Search(filter))
@@ -169,11 +184,11 @@ namespace ArcGISProMCP.Commands
                         var record = new Dictionary<string, object>();
                         foreach (var field in fields)
                         {
-                            try { record[field] = MapHelpers.Normalise(row[field]); }
-                            catch { record[field] = null; }
+                            record[field] = MapHelpers.Normalise(row[field]);
                         }
                         if (includeGeometry && row is Feature feature)
                             record["SHAPE@WKT"] = MapHelpers.ToWkt(feature.GetShape());
+                        budget.Observe(record);
                         rows.Add(record);
                     }
                 }
@@ -218,6 +233,7 @@ namespace ArcGISProMCP.Commands
                 while (cursor.MoveNext())
                 {
                     using (cursor.Current) count++;
+                    if (count > MaxScanRows) throw new InvalidOperationException("Count exceeds the 100000-row scan budget; no partial count returned.");
                 }
             }
 
@@ -236,7 +252,10 @@ namespace ArcGISProMCP.Commands
             var limit = Math.Min(parameters.GetInt("limit", 200), MaxRows);
 
             var counts = new Dictionary<string, long>();
+            var budget = new ByteBudget();
             var values = new Dictionary<string, object>();
+            var scanned = 0;
+            if (!ReadableFields(source).Contains(field, StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("Unknown or non-readable field.");
 
             using (var cursor = source.Search(BuildFilter(parameters, new[] { field })))
             {
@@ -244,8 +263,10 @@ namespace ArcGISProMCP.Commands
                 {
                     using (var row = cursor.Current)
                     {
+                        if (++scanned > MaxScanRows) throw new InvalidOperationException("Distinct query exceeds the 100000-row scan budget.");
                         var value = MapHelpers.Normalise(row[field]);
-                        var key = value?.ToString() ?? " null";
+                        budget.Observe(value);
+                        var key = JsonSerializer.Serialize(value);
                         counts.TryGetValue(key, out var current);
                         counts[key] = current + 1;
                         values[key] = value;
@@ -279,6 +300,7 @@ namespace ArcGISProMCP.Commands
 
             var numbers = new List<double>();
             long nulls = 0, total = 0;
+            if (!ReadableFields(source).Contains(field, StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("Unknown or non-readable field.");
 
             using (var cursor = source.Search(BuildFilter(parameters, new[] { field })))
             {
@@ -287,12 +309,13 @@ namespace ArcGISProMCP.Commands
                     using (var row = cursor.Current)
                     {
                         total++;
-                        var value = row[field];
+                        if (total > MaxScanRows) throw new InvalidOperationException("Statistics exceeds the 100000-row scan budget.");
+                        var value = MapHelpers.Normalise(row[field]);
                         if (value == null) { nulls++; continue; }
                         if (double.TryParse(value.ToString(),
                                             System.Globalization.NumberStyles.Any,
                                             System.Globalization.CultureInfo.InvariantCulture,
-                                            out var number))
+                                            out var number) && double.IsFinite(number))
                             numbers.Add(number);
                     }
                 }
@@ -337,6 +360,10 @@ namespace ArcGISProMCP.Commands
             if (!string.IsNullOrWhiteSpace(valueField)) subFields.Add(valueField);
 
             var buckets = new Dictionary<string, (List<object> Key, long Count, List<double> Values)>();
+            var budget = new ByteBudget();
+            var scanned = 0;
+            var available = ReadableFields(source);
+            if (subFields.Any(f => !available.Contains(f, StringComparer.OrdinalIgnoreCase))) throw new ArgumentException("Unknown or non-readable field.");
 
             using (var cursor = source.Search(BuildFilter(parameters, subFields)))
             {
@@ -345,7 +372,9 @@ namespace ArcGISProMCP.Commands
                     using (var row = cursor.Current)
                     {
                         var key = groupBy.Select(f => MapHelpers.Normalise(row[f])).ToList();
-                        var id = string.Join("", key.Select(k => k?.ToString() ?? ""));
+                        if (++scanned > MaxScanRows) throw new InvalidOperationException("Summary exceeds the 100000-row scan budget.");
+                        budget.Observe(key);
+                        var id = JsonSerializer.Serialize(key);
 
                         if (!buckets.TryGetValue(id, out var bucket))
                             bucket = (key, 0, new List<double>());
@@ -353,12 +382,12 @@ namespace ArcGISProMCP.Commands
                         var values = bucket.Values;
                         if (!string.IsNullOrWhiteSpace(valueField))
                         {
-                            var raw = row[valueField];
+                            var raw = MapHelpers.Normalise(row[valueField]);
                             if (raw != null && double.TryParse(
                                     raw.ToString(),
                                     System.Globalization.NumberStyles.Any,
                                     System.Globalization.CultureInfo.InvariantCulture,
-                                    out var number))
+                                    out var number) && double.IsFinite(number))
                                 values.Add(number);
                         }
                         buckets[id] = (bucket.Key, bucket.Count + 1, values);
