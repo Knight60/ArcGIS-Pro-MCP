@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 
 namespace ArcGISProMCP.Bridge
@@ -45,6 +46,7 @@ namespace ArcGISProMCP.Bridge
             new Dictionary<string, Registration>(StringComparer.OrdinalIgnoreCase);
 
         public static int Count => Commands.Count;
+        private static readonly SemaphoreSlim DispatchGate = new(1, 1);
 
         public static void Register(string name, string group, string summary,
                                     CommandHandler handler, bool runOnMct = true)
@@ -80,31 +82,30 @@ namespace ArcGISProMCP.Bridge
         public static async Task<object> DispatchAsync(string command, Params parameters,
                                                        JsonElement rawParameters)
         {
-            if (string.IsNullOrWhiteSpace(command))
-                throw new ArgumentException("No command given.");
-
+            ToolPolicy.Demand(command, rawParameters);
             if (!Commands.TryGetValue(command, out var registration))
+                throw new ArgumentException("Unknown command. Python fallback is disabled.");
+            if (!await DispatchGate.WaitAsync(0).ConfigureAwait(false))
+                throw new InvalidOperationException("Bridge busy. No operation was queued.");
+            try
             {
-                // Not ours -- let the Python bridge try. That is where arcpy,
-                // and anything not yet ported, still lives.
-                return await PythonFallback.SendAsync(command, rawParameters)
-                    .ConfigureAwait(false);
+                if (registration.AsyncHandler != null)
+                    return await registration.AsyncHandler(parameters).ConfigureAwait(false);
+                if (!registration.RunOnMct) return registration.Handler(parameters);
+                return await QueuedTask.Run(() =>
+                {
+                    // The UI can revoke editing while a request waits for the MCT.
+                    ToolPolicy.Demand(command, rawParameters);
+                    return registration.Handler(parameters);
+                }).ConfigureAwait(false);
             }
-
-            if (registration.AsyncHandler != null)
-                return await registration.AsyncHandler(parameters).ConfigureAwait(false);
-
-            if (!registration.RunOnMct)
-                return registration.Handler(parameters);
-
-            return await QueuedTask.Run(() => registration.Handler(parameters))
-                .ConfigureAwait(false);
+            finally { DispatchGate.Release(); }
         }
 
         /// <summary>Everything this bridge can do, grouped -- for get_capabilities.</summary>
         public static object Describe()
         {
-            var groups = Commands.Values
+            var groups = Commands.Values.Where(c => ToolPolicy.IsAdvertised(c.Name))
                 .GroupBy(c => c.Group)
                 .OrderBy(g => g.Key, StringComparer.Ordinal)
                 .ToDictionary(
@@ -114,13 +115,15 @@ namespace ArcGISProMCP.Bridge
                                   {
                                       ["command"] = c.Name,
                                       ["summary"] = c.Summary,
+                                      ["policy"] = ToolPolicy.Classification(c.Name),
                                   })
                                   .ToList());
 
             return new Dictionary<string, object>
             {
                 ["implemented_by"] = "ArcGIS Pro add-in (C#)",
-                ["command_count"] = Commands.Count,
+                ["command_count"] = Commands.Values.Count(c => ToolPolicy.IsAdvertised(c.Name)),
+                ["editing_enabled"] = ToolPolicy.EditingEnabled,
                 ["groups"] = groups,
                 ["fallback"] = PythonFallback.Describe(),
             };

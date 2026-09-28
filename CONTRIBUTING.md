@@ -55,9 +55,10 @@ release.
 
 ## The ribbon screenshot
 
-`docs/images/mcp-menu.png` shows the MCP tab, and a reader trusts the picture
-over the prose — it once showed `Port 6510` for weeks after the caption became
-the MCP port. Retake it whenever the ribbon changes:
+Screenshots are excluded from the source-only publication snapshot. If preparing
+new documentation, capture only synthetic projects and review pixels and metadata
+for account, machine, and data identifiers before deliberately including an image.
+The helper defaults to ignored `artifacts/screenshots/`:
 
 ```powershell
 .\scripts\capture_ribbon.ps1 -Delay 10

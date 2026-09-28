@@ -33,7 +33,7 @@ namespace ArcGISProMCP.Commands
 
             if (!string.IsNullOrWhiteSpace(requested))
             {
-                var match = items.FirstOrDefault(
+                var match = items.SingleOrDefault(
                     item => string.Equals(item.Name, requested, StringComparison.OrdinalIgnoreCase));
                 if (match == null)
                 {
@@ -69,9 +69,9 @@ namespace ArcGISProMCP.Commands
         public static Layer FindLayer(Map map, string name, bool required = true)
         {
             var layers = map.GetLayersAsFlattenedList();
-            var match = layers.FirstOrDefault(l => l.Name == name)
-                        ?? layers.FirstOrDefault(
-                            l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+            var matches = layers.Where(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count > 1) throw new ArgumentException("Layer name is ambiguous. Rename duplicate layers in ArcGIS Pro first.");
+            var match = matches.SingleOrDefault();
             if (match != null || !required) return match;
 
             throw new ArgumentException(
@@ -187,10 +187,15 @@ namespace ArcGISProMCP.Commands
             switch (value)
             {
                 case null: return null;
+                case string text: return text.Length <= 4096 ? text : throw new InvalidOperationException("Attribute exceeds the 4096-character budget; request fewer fields.");
                 case DateTime date: return date.ToString("yyyy-MM-dd HH:mm:ss");
                 case Guid guid: return guid.ToString();
-                case Geometry geometry: return ToWkt(geometry);
-                default: return value;
+                case Geometry: return "[geometry omitted]";
+                case byte[]: return "[binary omitted]";
+                case double number when !double.IsFinite(number): return null;
+                case float number when !float.IsFinite(number): return null;
+                case bool or byte or short or int or long or float or double or decimal: return value;
+                default: return "[unsupported value omitted]";
             }
         }
     }

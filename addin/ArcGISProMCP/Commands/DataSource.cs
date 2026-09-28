@@ -65,10 +65,13 @@ namespace ArcGISProMCP.Commands
         public static DataSource Resolve(Params parameters, string key = "layer_name")
         {
             var name = parameters.Require(key);
-            var map = TryResolveMap(parameters);
+            var map = MapHelpers.ResolveMap(parameters);
 
             if (map != null)
             {
+                var matches = map.GetLayersAsFlattenedList().Count(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase))
+                    + map.GetStandaloneTablesAsFlattenedList().Count(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (matches > 1) throw new ArgumentException("Layer/table name is ambiguous. Rename duplicates in ArcGIS Pro first.");
                 var layer = map.GetLayersAsFlattenedList().OfType<BasicFeatureLayer>()
                     .FirstOrDefault(l => string.Equals(l.Name, name,
                                                        StringComparison.OrdinalIgnoreCase));
@@ -84,15 +87,12 @@ namespace ArcGISProMCP.Commands
                     { Name = standalone.Name };
             }
 
-            var opened = TryOpenPath(name);
-            if (opened != null) return opened;
-
             var available = map == null ? "(no map)" : string.Join(", ",
                 map.GetLayersAsFlattenedList().Select(l => l.Name)
                    .Concat(map.GetStandaloneTablesAsFlattenedList().Select(t => t.Name)));
             throw new ArgumentException(
                 $"No layer, table or dataset called '{name}'. Layers and tables in the "
-                + $"map: {available}. A full path also works, including memory\\name.");
+                + $"map: {available}. Opening arbitrary dataset paths is disabled.");
         }
 
         /// <summary>

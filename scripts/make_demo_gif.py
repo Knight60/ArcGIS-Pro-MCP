@@ -10,6 +10,10 @@ demo worth putting at the top of a README.
 Needs ArcGIS Pro open with a polygon layer to play with. It changes symbology,
 selection, labelling and the view -- and never saves the project, so closing
 Pro without saving puts everything back.
+
+Historical upstream utility: its operations are disabled in the hardened build.
+Output stays in ignored artifacts. Use synthetic data only and review pixels
+and metadata before publishing any generated demonstration.
 """
 from __future__ import annotations
 
@@ -168,6 +172,6 @@ if __name__ == "__main__":
     parser.add_argument("--field", default="AreaKm2")
     parser.add_argument("--output", type=pathlib.Path,
                         default=pathlib.Path(__file__).resolve().parent.parent
-                        / "docs" / "images" / "demo.gif")
+                        / "artifacts" / "screenshots" / "demo.gif")
     arguments = parser.parse_args()
     build(arguments.layer, arguments.field, arguments.output)

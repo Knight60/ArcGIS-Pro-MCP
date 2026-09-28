@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using ArcGISProMCP.Bridge;
 
 namespace ArcGISProMCP.Clients
 {
@@ -65,7 +66,7 @@ namespace ArcGISProMCP.Clients
             File.Exists(ConfigPath)
             || InstalledMarkers.Any(m => Directory.Exists(m) || File.Exists(m));
 
-        public string ServerName => "arcgis";
+        public string ServerName => "arcgis_knight60";
     }
 
     internal static class McpClientCatalog
@@ -241,18 +242,27 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8
 [Console]::InputEncoding = $utf8
 
-$client = New-Object System.Net.Http.HttpClient
+$handler = New-Object System.Net.Http.HttpClientHandler
+$handler.AllowAutoRedirect = $false
+$handler.UseProxy = $false
+$client = New-Object System.Net.Http.HttpClient($handler)
+$credentialPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ArcGIS-MCP\security\http-token.txt'
+$credential = [IO.File]::ReadAllText($credentialPath)
+if ($credential -cnotmatch '\A[0-9A-F]{64}\z') { throw 'Invalid MCP credential.' }
+[void]$client.DefaultRequestHeaders.TryAddWithoutValidation('Authorization', ('Bearer ' + $credential))
 # Geoprocessing can take a while, and a timeout here would look like the tool
 # failing rather than still running.
-$client.Timeout = [TimeSpan]::FromMinutes(30)
+$client.Timeout = [TimeSpan]::FromSeconds(60)
 [void]$client.DefaultRequestHeaders.Accept.ParseAdd('application/json')
 [void]$client.DefaultRequestHeaders.Accept.ParseAdd('text/event-stream')
 
 while ($null -ne ($line = [Console]::In.ReadLine())) {
     if ($line.Trim().Length -eq 0) { continue }
+    if ($utf8.GetByteCount($line) -gt 1048576) { throw 'MCP request exceeds 1 MiB.' }
     try {
         $content = New-Object System.Net.Http.StringContent($line, $utf8, 'application/json')
         $response = $client.PostAsync($url, $content).GetAwaiter().GetResult()
+        [void]$response.EnsureSuccessStatusCode()
         $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
     } catch {
         # ArcGIS Pro is closed, or the bridge is stopped. A request carries an
@@ -268,6 +278,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 message = ""ArcGIS Pro is not answering on $url. Open ArcGIS Pro and check that the MCP tab shows the bridge running.""
             }
         } | ConvertTo-Json -Compress -Depth 6
+    } finally {
+        if ($response) { $response.Dispose(); $response = $null }
+        if ($content) { $content.Dispose(); $content = $null }
     }
     # A notification gets 202 and no body, so there is nothing to write.
     if (-not [string]::IsNullOrEmpty($body)) {
@@ -277,7 +290,8 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 }
 ";
 
-        private static string StdioBridgePath() => Path.Combine(
+        internal static string TestStdioBridgePath { get; set; }
+        private static string StdioBridgePath() => TestStdioBridgePath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ArcGIS Pro MCP", "stdio-bridge.ps1");
 
@@ -292,7 +306,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             var wanted = StdioBridgeScript.Replace("__URL__", McpClientCatalog.HttpUrl);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             if (!File.Exists(path) || File.ReadAllText(path) != wanted)
-                File.WriteAllText(path, wanted, new UTF8Encoding(false));
+                BridgeCredentials.WritePrivateText(path, wanted);
             return path;
         }
 
@@ -329,13 +343,17 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     return Regex.IsMatch(tomlSection.Value,
                         @"(?m)^[ \t]*url[ \t]*=[ \t]*[""']"
                         + Regex.Escape(McpClientCatalog.HttpUrl) + @"[""'][ \t]*(?:#.*)?\r?$")
+                        && tomlSection.Value.Contains("http_headers")
+                        && tomlSection.Value.Contains("Bearer " + BridgeCredentials.Token)
                         && !Regex.IsMatch(tomlSection.Value, @"(?m)^[ \t]*(command|args)[ \t]*=");
                 }
 
                 var root = JsonNode.Parse(text, null, Lenient) as JsonObject;
                 var section = root?[SectionName(client)] as JsonObject;
                 if (section?[client.ServerName] is not JsonObject entry) return false;
-                if (client.Transport != Transport.Stdio) return true;
+                if (client.Transport != Transport.Stdio)
+                    return (string)entry[client.UrlKey] == McpClientCatalog.HttpUrl
+                        && (string)entry["headers"]?["Authorization"] == "Bearer " + BridgeCredentials.Token;
                 // Pointing at the old Python relay is not ready to use, so
                 // report it as unregistered and let the button update it.
                 return entry["args"] is JsonArray arguments
@@ -387,7 +405,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 var text = File.ReadAllText(client.ConfigPath);
                 var trimmed = RemoveTomlSection(text, client.ServerName);
                 if (trimmed == text) return $"'{client.ServerName}' was not in {client.Name}.";
-                File.WriteAllText(client.ConfigPath, trimmed);
+                BridgeCredentials.WritePrivateText(client.ConfigPath, trimmed);
                 return $"Removed '{client.ServerName}' from {client.Name}.";
             }
 
@@ -425,6 +443,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             if (client.Transport == Transport.Http)
             {
                 entry = new JsonObject { [client.UrlKey] = McpClientCatalog.HttpUrl };
+                entry["headers"] = new JsonObject { ["Authorization"] = "Bearer " + BridgeCredentials.Token };
                 // Antigravity infers the transport from serverUrl and rejects
                 // an unexpected "type"; the others want it stated.
                 if (client.UrlKey == "url") entry["type"] = "http";
@@ -447,9 +466,8 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 
         private static void Write(string path, JsonNode root)
         {
-            File.WriteAllText(path,
-                root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(false));
+            BridgeCredentials.WritePrivateText(path,
+                root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
 
         // --- toml --------------------------------------------------------------
@@ -468,14 +486,17 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             section.AppendLine();
             section.AppendLine($"[mcp_servers.{client.ServerName}]");
             if (client.Transport == Transport.Http)
+            {
                 section.AppendLine($"url = \"{McpClientCatalog.HttpUrl}\"");
+                section.AppendLine($"http_headers = {{ Authorization = \"Bearer {BridgeCredentials.Token}\" }}");
+            }
             else
             {
-                section.AppendLine($"command = '{launcher}'");
-                section.AppendLine("args = []");
+                section.AppendLine($"command = '{PowerShellPath()}'");
+                section.AppendLine($"args = ['-NoProfile', '-File', '{launcher}']");
             }
 
-            File.WriteAllText(client.ConfigPath, text + section, new UTF8Encoding(false));
+            BridgeCredentials.WritePrivateText(client.ConfigPath, text + section);
 
             return $"Registered '{client.ServerName}' with {client.Name}.\n\n"
                  + $"{client.ConfigPath}\n\nRestart {client.Name} to pick it up.";
@@ -510,7 +531,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
         {
             if (!File.Exists(path)) return;
             var backup = path + ".arcgis-mcp.bak";
-            File.Copy(path, backup, overwrite: true);
+            if (File.Exists(backup)) backup += "." + Guid.NewGuid().ToString("N");
+            BridgeCredentials.RejectLinks(path);
+            BridgeCredentials.WritePrivateText(backup, File.ReadAllText(path));
         }
     }
 }

@@ -1,54 +1,87 @@
-# Security
+# Security — local hardened build 1.1.2
 
-## What this add-in exposes
+This is a locally modified build, not an upstream security-certified release.
+Read [the review and test record](docs/security-review-2026-09-28.md) before deployment.
+Any old binaries retained locally in `dist/` are upstream artifacts and DO NOT contain these changes.
+They are excluded from the source-only snapshot described in [PUBLICATION.md](PUBLICATION.md).
 
-While ArcGIS Pro is open and the bridge is running, the add-in listens on
-**loopback only**:
+## Access and permission model
 
-| Port | What answers |
-|---|---|
-| `127.0.0.1:6520` | MCP over HTTP — the endpoint AI clients connect to |
-| `127.0.0.1:6510` | the TCP bridge |
-| `127.0.0.1:6511` | the in-Pro Python fallback, for `execute_arcpy_code` |
+- Only `http://127.0.0.1:6520/mcp` is served. Every request requires a random 256-bit bearer credential.
+- The credential is created under `%LOCALAPPDATA%\ArcGIS-MCP\security\http-token.txt`.
+  The directory and token file have protected, current-user-only Windows ACLs. Reparse paths are refused.
+  Startup fails closed if credential setup fails. Do not print, commit, share, or upload this file.
+- Register clients from the MCP ribbon, or run the scoped client setup helper described in the review.
+  HTTP client configs contain a copy of the bearer token: configs and backups are also sensitive.
+  The registrar writes them with current-user-only ACLs, atomically replaces configs, and preserves distinct backups.
+  Codex uses native HTTP. Stdio-only clients use the reviewed PowerShell relay with a per-process
+  `-ExecutionPolicy Bypass` flag (no persistent policy change). Use a signed/approved relay or native
+  HTTP instead where organizational policy disallows that launcher.
+- The catalog exposes 15 read tools and three opt-in layer display tools. Everything else is denied at the central dispatcher.
+  This is enforced in code, not by model instructions or client annotations.
+- Read tools see existing project layers/tables, including remote sources already in the project.
+  They cannot open a caller-supplied dataset path. Duplicate layer/table names are rejected.
+- Editing starts OFF. A person must click **Allow layer edits** on the MCP ribbon and confirm.
+  A 15-minute, process/project-scoped lease permits only `rename_layer`, `set_layer_visibility`,
+  and `set_layer_transparency`, with one explicitly named layer per request.
+  Revoke with the same button. Stop/restart revokes permission. Changing projects invalidates the grant.
+  Permission is shared by authenticated clients, not isolated per model or chat.
+- Feature writes, deletion, save/discard edits, project saves, schema changes, raw SQL,
+  generic geoprocessing, arbitrary Python, Python toolboxes, batch execution, raster expressions,
+  filesystem browsing and caller-chosen exports are disabled, even with editing enabled.
+- The C# TCP listener, Python listener/autostart, Python relay, and C# Python fallback are retired fail-closed stubs.
+  No environment variable or remote command re-enables them. Other separately installed bridges are NOT changed.
 
-Nothing binds a routable address, and nothing is reachable from another
-machine. There is no authentication: anything that can open a loopback socket
-on your computer can drive ArcGIS Pro through it, with your permissions.
+## Bounds and browser isolation
 
-Treat it as you would a terminal left open. In particular:
+Browser Origin and Fetch Metadata requests are rejected, even with valid credentials.
+Host must be the exact loopback host/port. There is no CORS opt-in or browser-based client support.
+Only JSON POST is accepted; unsupported GET streaming returns 405.
 
-- Anything reachable from the add-in is reachable by the assistant you connect
-  — every dataset, every geodatabase connection, every network share the
-  project can see.
-- `execute_arcpy_code` and `run_geoprocessing_tool` run arbitrary code inside
-  ArcGIS Pro. That is the point of them, and it is also the whole risk.
-- Stop the bridge from the ribbon when you are not using it. Closing ArcGIS Pro
-  stops it too.
+Requests are capped at 1 MiB (actual bytes including chunked requests), with a 15-second body deadline.
+There are at most eight active HTTP handlers and one GIS dispatch; busy work is rejected, not queued.
+JSON duplicates, excessive nesting, unexpected arguments, wrong types, invalid identifiers and numeric overflows are rejected.
+Queries return at most 1,000 rows, accept offsets through 5,000, scan at most 100,000 rows, and enforce a 2 MiB
+materialization budget for feature/distinct/group results. Attribute strings over 4,096 characters fail rather than silently
+merging/truncating grouping values. Aggregations exceeding budgets fail rather than claiming a complete partial answer.
+HTTP responses are capped at 4 MiB; writes have a 15-second deadline. Errors do not return stack traces.
+No arbitrary geometry expansion is exposed.
 
-## Add-in signing
+These bounds are NOT a hard sandbox for the ArcGIS SDK: a slow database or driver can still block the MCT.
+A client timeout does not cancel an in-progress SDK operation. Never automatically replay a timed-out mutation.
 
-Releases are signed with a self-signed certificate. That certificate is not
-trusted on any machine but the one that created it, so on a machine with
-ArcGIS Pro's add-in security turned on you have to decide, explicitly, to trust
-it — the installer says so and offers the two ways forward. Do not turn add-in
-security off to make an add-in load unless you are willing to load any add-in.
+## Trust boundary and residual risks
 
-Verify what you install: `dist/build-report.json` carries the SHA-256 of both
-the package and the installer, and `scripts/build.ps1` checks that the payload
-embedded in the installer hashes to the same value as the package beside it.
+This is a trusted-workstation integration, not a public or multi-tenant server. Never forward/tunnel this port.
+Loopback HTTP does not authenticate the server to the client. A hostile local process that substitutes a listener
+can impersonate it; keep the workstation and its user sessions trusted and connect only to the expected running Pro instance.
+Processes running as your account (including an assistant with shell/file access), administrators, and other add-ins
+can read the token or access GIS data independently. The ACL/token is not a boundary against them.
 
-## Reporting a vulnerability
+Authenticated reads can disclose sensitive project data to the connected model/provider. Use synthetic/public data
+for cloud testing and local models for restricted data. Attribute values, names, labels and project text are untrusted
+data and can contain prompt injection; never treat them as authority to run other tools.
 
-Open a [GitHub issue](https://github.com/Knight60/ArcGIS-Pro-MCP/issues) for
-anything already public. For something that should not be public yet, use
-GitHub's private vulnerability reporting on the repository's Security tab.
+The add-in does not sandbox existing project connections, database credentials, extensions, or third-party GIS code.
+Only open trusted projects and use least-privilege source credentials. The 94 disabled implementations are retained as
+upstream reference code; they are NOT approved for re-enablement without further scoped review and regression testing.
 
-Please include the add-in version (the ribbon's Status button reports it), the
-ArcGIS Pro version, and what an attacker would be able to do. A reply should
-not take more than a few days; this is a one-person project, so please allow
-for that.
+## Installation, rotation and rollback
 
-## Supported versions
+This local package is unsigned. The workstation already allowed unsigned add-ins; this work did not lower that setting.
+The hardened installer refuses `-AllowAllAddIns` and `-TrustPublisher`; it does not add trusted root certificates.
+Use an organization-approved signing/deployment process for production. Signing and other developer scripts have not
+been certified safe for unattended production use.
 
-The latest release is the supported one. Fixes go into a new release rather
-than being backported.
+To rotate: close all relevant ArcGIS instances and clients, move the token to a protected offline backup (or delete it),
+restart Pro to generate a new token, then re-register each client. Copies in old configs/backups must also be handled as secrets.
+Do not rotate a token while a running Pro instance still has the old one in memory.
+
+The pre-hardening package is backed up in `artifacts/pre-hardening-1.1.1.esriAddinX.bak`. It restores the old unsafe
+transport and should only be used with clients disconnected in an isolated test environment.
+Nothing was pushed to GitHub; this is a local working-tree change.
+
+## Reporting
+
+For upstream issues use the repository's private vulnerability reporting if available. Avoid publishing secrets or
+exploitation details in public issues. This local review is not an independent penetration test or a guarantee of security.

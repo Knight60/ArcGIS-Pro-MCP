@@ -28,11 +28,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install the Python dependencies
-        run: pip install "mcp>=1.6.0,<2" "pydantic>=2.0"
-
       - name: Client registration
-        run: dotnet run --project tests\client-registration --nologo -v quiet
+        run: dotnet run --project tests\client-registration -f net10.0 --nologo -v quiet
 
       - name: MCP over HTTP (.NET 8)
         run: dotnet run --project tests\http-transport -f net8.0 --nologo -v quiet
@@ -46,8 +43,14 @@ jobs:
       - name: Main-thread pump
         run: python tests\test_pump.py
 
-      - name: End to end against a mock bridge
+      - name: Legacy transports are disabled
         run: python tests\test_end_to_end_mock.py
+
+      - name: Publication privacy regression tests
+        run: python -m unittest discover -s tests -p test_publication.py
+
+      - name: Publication source audit
+        run: python scripts\prepare_publication.py --check
 
       - name: Installer scripts parse and call nothing undefined
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\installer\test-script-integrity.ps1

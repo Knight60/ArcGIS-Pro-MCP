@@ -51,6 +51,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $Uninstall) { throw 'Python bridge installation/autostart is disabled in the hardened build. Install the C# add-in and use authenticated HTTP.' }
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $pluginDir = Join-Path $repoRoot "arcgis_pro_plugin"
 $stateDir = Join-Path $env:LOCALAPPDATA "ArcGIS-MCP"

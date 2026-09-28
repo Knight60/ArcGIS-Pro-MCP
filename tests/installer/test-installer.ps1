@@ -7,7 +7,7 @@ $ast = [Management.Automation.Language.Parser]::ParseFile($source, [ref]$null, [
 if ($parseErrors) { throw $parseErrors }
 # Load the actual discovery/removal functions without running installer entry
 # points or changing the real Documents directory, certificates or registry.
-foreach ($name in 'Say','Good','Get-AddInVersion','Find-InstalledCopies','Remove-EmptyAddInFolders','Uninstall-AddIn') {
+foreach ($name in 'Say','Good','Get-AddInVersion','Test-SafeInstallPath','Find-InstalledCopies','Remove-EmptyAddInFolders','Uninstall-AddIn') {
     $definition = $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) |
         Where-Object Name -eq $name
     if (-not $definition) { throw "Missing function $name" }
@@ -15,6 +15,7 @@ foreach ($name in 'Say','Good','Get-AddInVersion','Find-InstalledCopies','Remove
 }
 $target = Join-Path $repository ('artifacts\installer-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $target | Out-Null
+if (Test-SafeInstallPath (Join-Path $repository 'outside.esriAddinX')) { throw 'Install path validation accepted a path outside the fixture' }
 $Package = (Resolve-Path -LiteralPath $Package).Path
 $expected = ([xml](Get-Content (Join-Path $repository 'addin\ArcGISProMCP\Config.daml') -Raw)).ArcGIS.AddInInfo.version
 if ((Get-AddInVersion $Package) -ne $expected) { throw "Candidate is not version $expected" }
@@ -39,7 +40,7 @@ Uninstall-AddIn $copies
 if ((Find-InstalledCopies).Count -ne 0) { throw 'Uninstall left a package behind' }
 if (-not (Test-Path -LiteralPath $unrelated)) { throw 'Uninstall removed unrelated data' }
 if (Test-Path -LiteralPath $leftover) { throw 'Uninstall left the empty add-in id folder behind' }
-if (Test-Path -LiteralPath $nested) { throw 'Uninstall left an emptied folder behind' }
+if (-not (Test-Path -LiteralPath $nested)) { throw 'Uninstall removed an unrelated directory' }
 if (-not (Test-Path -LiteralPath (Join-Path $occupied 'keep.txt'))) { throw 'Uninstall emptied a folder that was not ours' }
 Remove-Item -LiteralPath $target -Recurse -Force
 Write-Host 'PASS installer: renamed/nested discovery, uninstall, empty folders cleared, unrelated data preserved'

@@ -1,5 +1,8 @@
 # Codex HTTP and Pro 3.4/3.7 release validation
 
+> Historical upstream 1.1.1 evidence only, not validation of this hardened fork.
+> The current security profile and tests are in [the 1.1.2 review](security-review-2026-09-28.md).
+
 Status on 2026-09-06: **validated on Pro 3.7 and published to `dist`. Not
 certified for any other Pro version** -- do not publish as dual-version support.
 
@@ -37,7 +40,7 @@ Candidates and installers are separate from `dist`, and build does not deploy.
 | Python unit tests | 8 passed |
 | Python mock end-to-end | Passed with MCP SDK 1.29.1, including tool arguments, error hints and image output |
 | Fresh Python dependency resolution | Found MCP 2.x incompatibility with existing FastMCP import; bound dependency to `mcp>=1.6.0,<2` |
-| Codex model-driven tool call | Not run: the test account hit its Codex usage limit. Transport and configuration are verified; the model layer is not |
+| Codex model-driven tool call | Not run; transport/configuration verification did not validate the model layer |
 | Install from the released file alone | Simulated on this machine: only `Install-ArcGISProMCP.cmd` in a folder, carrying a download's Mark-of-the-Web, no repository and no `.esriAddinX` beside it. Installed, Pro restarted, bridge answered 1.1.1.0 |
 | Codex on a machine with no relay | Virgin `CODEX_HOME`, config holding only the bytes the ribbon button writes: `codex mcp list` resolved it, the session connected with no transport error, and no `arcgis-pro-mcp.exe` process was spawned |
 | Untrusted publisher at default security | Not simulated: this machine keeps `BlockAddIns` = 1 with the build certificate trusted. A machine that trusts neither, at the default 0, is untested |

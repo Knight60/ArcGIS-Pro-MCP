@@ -7,6 +7,11 @@
   <ItemGroup>
     <Compile Include="../../addin/ArcGISProMCP/Bridge/McpHttpServer.cs" Link="McpHttpServer.cs" />
     <Compile Include="../../addin/ArcGISProMCP/Bridge/Protocol.cs" Link="Protocol.cs" />
+    <Compile Include="../../addin/ArcGISProMCP/Bridge/ToolPolicy.cs" Link="ToolPolicy.cs" />
+    <Compile Include="../../addin/ArcGISProMCP/Bridge/BridgeCredentials.cs" Link="BridgeCredentials.cs" />
+    <Compile Include="../../addin/ArcGISProMCP/Bridge/CommandRouter.cs" Link="CommandRouter.cs" />
+    <Compile Include="../../addin/ArcGISProMCP/Bridge/PythonFallback.cs" Link="PythonFallback.cs" />
+    <Compile Include="../../addin/ArcGISProMCP/Bridge/BridgeServer.cs" Link="BridgeServer.cs" />
     <EmbeddedResource Include="../../addin/ArcGISProMCP/Resources/tools.json" LogicalName="ArcGISProMCP.Resources.tools.json" />
   </ItemGroup>
 </Project>

@@ -103,7 +103,7 @@ namespace ArcGISProMCP.UI
     {
         protected override void OnUpdate()
         {
-            var running = MCPModule.Current?.Server?.IsRunning ?? false;
+            var running = MCPModule.Current?.Mcp?.IsRunning ?? false;
 
             Caption = running ? "Stop bridge" : "Start bridge";
             LargeImage = Icons.Get(running ? "Stop" : "Start");
@@ -118,7 +118,7 @@ namespace ArcGISProMCP.UI
 
         protected override void OnClick()
         {
-            var server = MCPModule.Current.Server;
+            var server = MCPModule.Current.Mcp;
             try
             {
                 var message = server.IsRunning ? server.Stop() : server.Start();
@@ -139,7 +139,7 @@ namespace ArcGISProMCP.UI
     {
         protected override void OnUpdate()
         {
-            var server = MCPModule.Current?.Server;
+            var server = MCPModule.Current?.Mcp;
             var running = server?.IsRunning ?? false;
 
             LargeImage = Icons.Get(running ? "StatusOn" : "StatusOff");
@@ -157,19 +157,17 @@ namespace ArcGISProMCP.UI
 
         protected override void OnClick()
         {
-            var server = MCPModule.Current.Server;
+            var server = MCPModule.Current.Mcp;
             var report = new StringBuilder();
 
             // The URL first: it is the one line anyone reading this needs.
             report.AppendLine(server.IsRunning
                 ? $"AI clients connect to {McpClientCatalog.HttpUrl}"
                 : "Not listening.");
-            report.AppendLine($"Legacy TCP bridge: 127.0.0.1:{server.Port} "
-                            + "(older Python scripts only)");
+            report.AppendLine("Authentication: required. Legacy TCP: disabled.");
+            report.AppendLine(ToolPolicy.EditingEnabled ? "Reviewed layer editing: enabled (expires automatically)." : "Access: read-only.");
             report.AppendLine($"Commands implemented here: {CommandRouter.Count}");
             report.AppendLine($"Requests served: {server.RequestCount}");
-            if (server.StartedAt.HasValue)
-                report.AppendLine($"Started: {server.StartedAt:yyyy-MM-dd HH:mm:ss}");
 
             ClientStates.Invalidate();
             report.AppendLine();
@@ -183,9 +181,7 @@ namespace ArcGISProMCP.UI
             }
 
             report.AppendLine();
-            report.AppendLine("Anything not implemented here is forwarded to the Python "
-                            + $"bridge on port {PythonFallback.Port}, which is where arcpy "
-                            + "and execute_arcpy_code live. That bridge is optional.");
+            report.AppendLine("Code, generic geoprocessing, batches, filesystem tools and Python fallback are disabled.");
 
             if (!string.IsNullOrEmpty(MCPModule.Current.StartupError))
             {
@@ -245,7 +241,7 @@ namespace ArcGISProMCP.UI
                 ? $"{client.Name}: connected"
                 : $"{client.Name}: not connected";
             Tooltip = registered
-                ? $"'arcgis' is in {client.ConfigPath}.\nClick to remove it."
+                ? $"'arcgis_knight60' is in {client.ConfigPath}.\nClick to remove it."
                 : $"Click to add or update the 'arcgis' server in {client.ConfigPath}.";
         }
 
@@ -289,7 +285,7 @@ namespace ArcGISProMCP.UI
             // is reformatted" about Codex's config.toml was simply untrue.
             var caveat = !exists ? ""
                 : client.Shape == ConfigShape.Toml
-                    ? "The file is copied to .arcgis-mcp.bak first. The arcgis section "
+                    ? "The file is copied to .arcgis-mcp.bak first. The arcgis_knight60 section "
                       + "is replaced, including any old stdio settings. Other settings are kept.\n\n"
                     : "The file is copied to .arcgis-mcp.bak first. Rewriting the JSON "
                       + "reflows the whole file and drops any comments in it.\n\n";
@@ -364,6 +360,30 @@ namespace ArcGISProMCP.UI
 
     internal class ClaudeCodeButton : ClientButtonBase
     { protected override string ClientId => "claude-code"; }
+
+    internal class EditingPermissionButton : Button
+    {
+        protected override void OnUpdate()
+        {
+            Caption = ToolPolicy.EditingEnabled ? "Revoke editing" : "Allow layer edits";
+            LargeImage = Icons.Get("Info");
+            SmallImage = Icons.Get("Info", 16);
+            Tooltip = "Read-only by default. Enable only layer rename, visibility and transparency for 15 minutes.";
+        }
+        protected override void OnClick()
+        {
+            if (ToolPolicy.EditingEnabled) { ToolPolicy.RevokeEditing(); return; }
+            if (MessageBox.Show("Allow authenticated clients to rename layers and change their visibility/transparency for 15 minutes?\n\n"
+                + "This permission applies to all authenticated clients of this ArcGIS Pro process. No feature edits, deletion, file writes, code execution or save tools are enabled. "
+                + "Changes affect the open project and may persist if you save it yourself. Revoke before opening a different project.",
+                "Enable reviewed layer editing", System.Windows.MessageBoxButton.YesNo) == System.Windows.MessageBoxResult.Yes)
+            {
+                var project = ArcGIS.Desktop.Core.Project.Current;
+                if (project != null)
+                    ToolPolicy.EnableReviewedEditing(() => ReferenceEquals(project, ArcGIS.Desktop.Core.Project.Current));
+            }
+        }
+    }
 
     internal class CodexButton : ClientButtonBase
     { protected override string ClientId => "codex"; }

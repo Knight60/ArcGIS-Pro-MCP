@@ -5,9 +5,9 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://schemas.esri.com/DADF/Registry Registry.xsd">
 
-  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="1.1.1" desktopVersion="3.7">
+  <AddInInfo id="{2e4cb7d3-56a7-4caf-911f-390b5821de61}" version="1.1.2" desktopVersion="3.7">
     <Name>ArcGIS Pro MCP</Name>
-    <Description>Lets AI assistants drive this ArcGIS Pro session over the Model Context Protocol.</Description>
+    <Description>Local hardened build: authenticated read-only MCP with explicit reviewed layer-editing permission.</Description>
     <Author>Pisut Nakmuenwai</Author>
     <Company>Pisut Nakmuenwai</Company>
     <Date>09/06/2026</Date>
@@ -39,6 +39,7 @@
         <group id="ArcGISProMCP_BridgeGroup" caption="Bridge" appearsOnAddInTab="true">
           <button refID="ArcGISProMCP_ToggleButton" size="large" />
           <button refID="ArcGISProMCP_StatusButton" size="large" />
+          <button refID="ArcGISProMCP_EditingPermission" size="large" />
         </group>
 
         <!--
@@ -64,6 +65,10 @@
       </groups>
 
       <controls>
+        <button id="ArcGISProMCP_EditingPermission" caption="Allow layer edits"
+                className="UI.EditingPermissionButton" loadOnClick="false" keytip="ME">
+          <tooltip heading="Read-only by default">Enable reviewed layer display edits for 15 minutes.<disabledText /></tooltip>
+        </button>
         <button id="ArcGISProMCP_ToggleButton"
                 caption="Start bridge"
                 className="UI.ToggleServerButton"

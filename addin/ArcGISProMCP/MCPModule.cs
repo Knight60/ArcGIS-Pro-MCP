@@ -66,12 +66,15 @@ namespace ArcGISProMCP
 
             try
             {
-                Log(Server.Start());
+                _ = BridgeCredentials.Token;
+                ToolPolicy.RevokeEditing();
+                Log("Hardened profile: read-only; legacy TCP and Python fallback disabled.");
             }
             catch (Exception exception)
             {
                 StartupError = $"Could not start the bridge: {exception}";
                 Log(StartupError);
+                return true;
             }
 
             try
@@ -80,8 +83,8 @@ namespace ArcGISProMCP
             }
             catch (Exception exception)
             {
-                // The TCP bridge still works without this, so it is not fatal.
-                Log($"Could not start MCP over HTTP: {exception.Message}");
+                StartupError = $"Could not start authenticated MCP HTTP: {exception.Message}";
+                Log(StartupError);
             }
 
             return true;
