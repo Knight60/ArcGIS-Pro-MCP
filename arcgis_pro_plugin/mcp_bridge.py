@@ -33,7 +33,9 @@ from arcgis_mcp.h_pump import INLINE_COMMANDS
 from arcgis_mcp.registry import HANDLERS
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 6510
+# 6521 sits next to the add-in's MCP endpoint (6520). The add-in holds 6510 for
+# its legacy TCP bridge, so the old default only ever worked by sliding to 6511.
+DEFAULT_PORT = 6521
 PORT_SEARCH_RANGE = 10
 _REGISTRY_KEY = "_ARCGIS_MCP_BRIDGE"  # survives .pyt reloads
 

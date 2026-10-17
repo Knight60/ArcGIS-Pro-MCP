@@ -38,7 +38,11 @@ $ErrorActionPreference = "Stop"
 
 function Get-Pro { Get-Process ArcGISPro -ErrorAction SilentlyContinue }
 
-function Test-Bridge($port = 6510) {
+# The add-in's MCP endpoint. It goes through http.sys, so the listening socket
+# belongs to the System process (PID 4), not to ArcGISPro.exe.
+$McpUrl = "http://127.0.0.1:6520/mcp"
+
+function Test-Bridge($port = 6520) {
     $null -ne (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
 }
 
@@ -64,20 +68,18 @@ if ($Project) {
 # --- close -------------------------------------------------------------------
 
 function Send-Command($command, $timeoutMs = 120000) {
-    $client = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 6510)
-    try {
-        $stream = $client.GetStream()
-        $payload = [Text.Encoding]::UTF8.GetBytes(
-            "{`"id`":1,`"command`":`"$command`",`"params`":{}}`n")
-        $stream.Write($payload, 0, $payload.Length)
-        $stream.Flush()
-        $client.ReceiveTimeout = $timeoutMs
-        $buffer = New-Object byte[] 8192
-        $read = $stream.Read($buffer, 0, $buffer.Length)
-        return [Text.Encoding]::UTF8.GetString($buffer, 0, $read)
-    } finally {
-        $client.Close()
+    # One MCP tools/call. Returns a small JSON string with "success", which is
+    # what the callers below match on.
+    $body = @{ jsonrpc = "2.0"; id = 1; method = "tools/call";
+               params = @{ name = $command; arguments = @{} } } | ConvertTo-Json -Depth 5 -Compress
+    $headers = @{ "Accept" = "application/json, text/event-stream"; "MCP-Protocol-Version" = "2025-03-26" }
+    $reply = Invoke-RestMethod -Uri $McpUrl -Method Post -Body $body -ContentType "application/json" `
+        -Headers $headers -TimeoutSec ([int]($timeoutMs / 1000))
+    $text = ($reply.result.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+    if ($reply.result.isError) {
+        return (@{ success = $false; error = $text } | ConvertTo-Json -Compress)
     }
+    return (@{ success = $true; data = $text } | ConvertTo-Json -Compress)
 }
 
 # Pro's "save changes?" prompt is a WPF dialog inside the main window, not a
@@ -121,6 +123,31 @@ function Answer-SavePrompt($process) {
     return $false
 }
 
+# Close Pro's real main window. Process.CloseMainWindow() goes to whatever
+# MainWindowHandle points at, and while a geoprocessing toast is showing that
+# can be the ArcGISNotifications window: closing it leaves Pro running.
+function Close-ProWindow($process) {
+    try {
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes -ErrorAction Stop
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $byPid = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+        $best = $null; $area = 0
+        foreach ($window in $root.FindAll([System.Windows.Automation.TreeScope]::Children, $byPid)) {
+            if ($window.Current.Name -eq "ArcGISNotifications") { continue }
+            $r = $window.Current.BoundingRectangle
+            if ($r.Width * $r.Height -gt $area) { $best = $window; $area = $r.Width * $r.Height }
+        }
+        if ($best) {
+            $best.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+            return
+        }
+    } catch {
+        # Fall through to the plain call.
+    }
+    $null = $process.CloseMainWindow()
+}
+
 $pro = Get-Pro
 if ($pro) {
     if ($Save -and (Test-Bridge)) {
@@ -144,7 +171,7 @@ if ($pro) {
     }
 
     Write-Host "Closing ArcGIS Pro (pid $($pro.Id))..."
-    $null = $pro.CloseMainWindow()
+    Close-ProWindow $pro
 
     # Pro's own shutdown can take a couple of minutes on a large project, and
     # it reports progress in the window title -- worth reading before deciding
@@ -163,6 +190,10 @@ if ($pro) {
         if ($waited % 30 -eq 0) {
             Write-Host ("  {0}s: '{1}', responding={2}" -f `
                 $waited, $running.MainWindowTitle, $running.Responding)
+        }
+        # A close request that went to the wrong window is simply lost; ask again.
+        if ($waited % 60 -eq 0 -and $running.MainWindowTitle -notlike "*hutting down*") {
+            Close-ProWindow $running
         }
     }
 

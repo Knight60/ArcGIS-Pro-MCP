@@ -284,7 +284,7 @@ if ($NoAutoStart) {
             $config = [ordered]@{
                 enabled    = $true
                 plugin_dir = $pluginDir
-                port       = 6510
+                port       = 6521
                 installed  = (Get-Date).ToString("s")
             }
             # Written without a BOM: the hook parses this from Python.

@@ -110,7 +110,7 @@ def main():
         sys.executable))
     thread = threading.Thread(
         target=_start_when_ready,
-        args=(plugin_dir, int(config.get("port", 6510))),
+        args=(plugin_dir, int(config.get("port", 6521))),
         name="ArcGISMCPAutostart", daemon=True,
     )
     thread.start()
