@@ -6,6 +6,7 @@ using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Editing;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGISProMCP.Bridge;
 
@@ -24,12 +25,12 @@ namespace ArcGISProMCP.Commands
 
         public static void Register()
         {
-            CommandRouter.Register("insert_features", Group,
-                "Insert rows into a layer or table.", InsertFeatures);
-            CommandRouter.Register("update_features", Group,
-                "Update rows matching a where clause.", UpdateFeatures);
-            CommandRouter.Register("delete_features", Group,
-                "Delete rows matching a where clause.", DeleteFeatures);
+            CommandRouter.RegisterAsync("insert_features", Group,
+                "Insert rows into a layer or table.", ThenMaybeSave(InsertFeatures));
+            CommandRouter.RegisterAsync("update_features", Group,
+                "Update rows matching a where clause.", ThenMaybeSave(UpdateFeatures));
+            CommandRouter.RegisterAsync("delete_features", Group,
+                "Delete rows matching a where clause.", ThenMaybeSave(DeleteFeatures));
             CommandRouter.Register("list_fields", "schema",
                 "List a layer's fields with type, alias and length.", ListFields);
             CommandRouter.RegisterAsync("save_edits", Group,
@@ -119,7 +120,6 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The insert failed: {operation.ErrorMessage}");
 
-            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
@@ -196,7 +196,6 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The update failed: {operation.ErrorMessage}");
 
-            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
@@ -228,7 +227,6 @@ namespace ArcGISProMCP.Commands
                 throw new InvalidOperationException(
                     $"The delete failed: {operation.ErrorMessage}");
 
-            MaybeSave(parameters);
             return new Dictionary<string, object>
             {
                 ["layer"] = layer.Name,
@@ -271,13 +269,19 @@ namespace ArcGISProMCP.Commands
             };
         }
 
-        /// <summary>Commit straight away when the caller asked for it.</summary>
-        private static void MaybeSave(Params parameters)
-        {
-            if (!parameters.GetBool("save_edits")) return;
-            var project = Project.Current;
-            if (project != null && project.HasEdits) project.SaveEditsAsync().Wait();
-        }
+        /// <summary>
+        /// Run an edit on the MCT, then commit straight away when the caller asked
+        /// for it. Saving is UI-thread work, so it happens after the MCT part has
+        /// returned; waiting for it from the MCT would block Pro.
+        /// </summary>
+        private static AsyncCommandHandler ThenMaybeSave(CommandHandler edit) =>
+            async parameters =>
+            {
+                var result = await QueuedTask.Run(() => edit(parameters)).ConfigureAwait(false);
+                if (parameters.GetBool("save_edits") && Project.Current?.HasEdits == true)
+                    await MapCommands.SaveEditsOnUiThread().ConfigureAwait(false);
+                return result;
+            };
 
         private static object ListFields(Params parameters)
         {

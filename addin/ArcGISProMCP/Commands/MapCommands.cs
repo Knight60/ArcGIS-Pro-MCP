@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ArcGIS.Desktop.Framework;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Core.CIM;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Mapping;
@@ -32,8 +33,10 @@ namespace ArcGISProMCP.Commands
                 "Create a new map or scene.", CreateMap);
             CommandRouter.Register("remove_map", Group,
                 "Delete a map from the project.", RemoveMap);
-            CommandRouter.Register("activate_map", Group,
-                "Open a map's view in the ArcGIS Pro UI.", ActivateMap);
+            // Opening a pane is UI-thread work that itself queues onto the MCT,
+            // so it must not be awaited from the MCT (that deadlocked Pro).
+            CommandRouter.RegisterAsync("activate_map", Group,
+                "Open a map's view in the ArcGIS Pro UI.", ActivateMapAsync);
             CommandRouter.Register("set_map_properties", Group,
                 "Rename a map.", SetMapProperties);
             CommandRouter.Register("get_environment", Group,
@@ -148,11 +151,11 @@ namespace ArcGISProMCP.Commands
             return new Dictionary<string, object> { ["removed"] = name };
         }
 
-        private static object ActivateMap(Params parameters)
+        private static async Task<object> ActivateMapAsync(Params parameters)
         {
             var name = parameters.Require("map_name");
-            var map = FindMapItem(name).GetMap();
-            ProApp.Panes.CreateMapPaneAsync(map).Wait();
+            var map = await QueuedTask.Run(() => FindMapItem(name).GetMap()).ConfigureAwait(false);
+            await OnUiThread(() => ProApp.Panes.CreateMapPaneAsync(map)).ConfigureAwait(false);
             return new Dictionary<string, object> { ["activated"] = map.Name };
         }
 

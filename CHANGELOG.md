@@ -8,6 +8,16 @@ the MCP handshake all report.
 
 ### Fixed
 
+- **`activate_map` froze ArcGIS Pro for good.** It ran on the Main CIM Thread
+  and waited there for the map pane to open, but opening a pane is UI-thread
+  work that itself queues onto the Main CIM Thread, so each waited for the
+  other. Every later tool call timed out and Pro could not be closed, only
+  killed. The map is now read on the Main CIM Thread and the pane opened on the
+  UI thread, with neither blocking the other.
+- **`save_edits: true` on `insert_features`, `update_features` and
+  `delete_features` waited for the save on the Main CIM Thread**, the same
+  pattern, although saving edits belongs on the UI thread. The edit now
+  finishes first and the save follows on the UI thread.
 - **"Stop bridge" did not stop what AI clients connect to.** The ribbon's
   Start/Stop button, its Status caption and "Requests served" all read the
   legacy TCP bridge on 6510, while every AI client uses the MCP endpoint on
