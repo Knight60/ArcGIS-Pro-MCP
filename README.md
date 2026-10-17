@@ -32,15 +32,14 @@ falls through three layers, and takes the fastest one that can answer it:
 
 | | | |
 |---|---|---|
-| **1** | **112 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 109 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
+| **1** | **112 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 110 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
 | **2** | **Every geoprocessing tool** | `run_geoprocessing_tool` runs any of Pro's ~2,000 tools by name, with named parameters rather than a positional list to miscount. Still in-process, still C#. |
-| **3** | **Arbitrary arcpy** | `execute_arcpy_code` hands Python straight to arcpy in the running application. Whatever the layers above have no tool for, this reaches. |
+| **3** | **Arbitrary arcpy** | `execute_arcpy_code` hands Python straight to arcpy in the running application, with the open project available. Whatever the layers above have no tool for, this reaches. |
 
-Layers 1 and 2 need nothing but the add-in. Layer 3 runs through an optional
-Python bridge inside ArcGIS Pro's own Python — install it when you want the
-escape hatch, skip it and the first two still work. A command the add-in does
-not implement is forwarded there automatically; if it is not running, the
-error says so and how to start it, rather than failing obscurely.
+All three need nothing but the add-in. Layer 3 runs the code inside ArcGIS
+Pro through the ModelBuilder tool Calculate Value, so there is no separate
+Python process to install or start; variables persist between calls and
+`print()` output comes back.
 
 The practical effect is that there is no such thing as "the tool for that is
 missing". If it can be done in ArcGIS Pro, it can be asked for in a sentence.
@@ -142,9 +141,7 @@ The address every one of them connects to is
 http://127.0.0.1:6520/mcp
 ```
 
-That is the only number worth remembering. The add-in also listens on 6510 for
-a legacy TCP bridge, and optionally on 6511 for the in-Pro Python fallback, but
-no AI client uses either. All three are bound to `127.0.0.1` and are not
+That is the only port the add-in opens. It is bound to `127.0.0.1` and is not
 reachable from another machine — see [SECURITY.md](SECURITY.md).
 
 <details>
@@ -439,17 +436,12 @@ assistant confirm before bulk edits.
 An ArcGIS Pro add-in written in C#, running inside Pro's own process:
 
 ```text
-AI client ──MCP over HTTP :6520/mcp ─┐
-                                     │
-AI client ──MCP stdio──► arcgis-pro-mcp ──TCP :6510──┐
-                                     │               │
-                                     ▼               ▼
-              ┌─ C# add-in (inside the ArcGIS Pro process) ─┐
-              │   → QueuedTask.Run (Main CIM Thread)        │
-              │   anything it does not implement ─┐         │
-              └───────────────────────────────────┼─────────┘
-                                                  ▼ :6511
-                                    Python bridge (execute_arcpy_code)
+AI client ──MCP over HTTP :6520/mcp ──┐
+                                      ▼
+              ┌─ C# add-in (inside the ArcGIS Pro process) ──────────┐
+              │   → QueuedTask.Run (Main CIM Thread)                 │
+              │   execute_arcpy_code → Calculate Value → arcpy       │
+              └──────────────────────────────────────────────────────┘
 ```
 
 Being in-process is the whole point. ArcGIS Pro will only let its own Main CIM
@@ -458,10 +450,10 @@ earlier all-Python version had to hand work to Pro's Python thread and wait,
 which took around 28 seconds per call. The add-in uses `QueuedTask.Run`
 directly: **9 ms**.
 
-Three of the 112 tools stay on the Python side, and belong there:
-`execute_arcpy_code`, because a compiled add-in cannot run code composed at
-call time, and `get_pump_status` / `stop_pump`, which report on the Python
-bridge's own dispatcher.
+Two of the 112 tools stay on the Python side: `get_pump_status` and
+`stop_pump`, which report on the optional Python bridge's own dispatcher. That
+bridge (127.0.0.1:6521) is now only a fallback for `execute_arcpy_code`, used
+if Calculate Value ever stops running code; nothing needs to start it.
 
 More detail in [docs/](docs/).
 

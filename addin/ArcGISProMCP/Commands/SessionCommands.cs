@@ -49,18 +49,15 @@ namespace ArcGISProMCP.Commands
 
         private static object Ping(Params parameters)
         {
-            var server = MCPModule.Current?.Server;
             var result = new Dictionary<string, object>
             {
                 ["pong"] = true,
                 ["implementation"] = "addin",
                 ["pid"] = Process.GetCurrentProcess().Id,
-                // The address every AI client connects on. Named so nobody has
-                // to guess which of the three ports is theirs -- reporting the
-                // TCP bridge's number here once had an assistant tell its user
-                // the wrong port in perfectly good faith.
+                // The address every AI client connects on -- now the only port
+                // the add-in opens. Reporting the old TCP bridge's number here
+                // once had an assistant tell its user the wrong port.
                 ["mcp_url"] = McpClientCatalog.HttpUrl,
-                ["tcp_bridge_port"] = server?.Port,
                 ["command_count"] = CommandRouter.Count,
             };
 
@@ -209,7 +206,7 @@ namespace ArcGISProMCP.Commands
                 ["implementation"] = "C# add-in -- commands run on the MCT, no Python "
                                    + "dispatcher needed",
                 ["commands"] = CommandRouter.Count,
-                ["port"] = MCPModule.Current?.Server?.Port,
+                ["mcp_url"] = McpClientCatalog.HttpUrl,
             });
 
             Check("project", () =>

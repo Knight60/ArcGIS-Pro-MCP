@@ -19,7 +19,7 @@ namespace ArcGISProMCP.Bridge
     /// </summary>
     internal static class PythonFallback
     {
-        public const int DefaultPort = 6511;
+        public const int DefaultPort = 6521;
 
         private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
         private static int _port = DefaultPort;

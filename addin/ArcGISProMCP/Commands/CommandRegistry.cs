@@ -21,6 +21,7 @@ namespace ArcGISProMCP.Commands
             ViewCommands.Register();
             RasterCommands.Register();
             GeoprocessingCommands.Register();
+            PythonCommands.Register();
         }
     }
 }

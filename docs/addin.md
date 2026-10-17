@@ -44,9 +44,9 @@ the clue. They are dispatched explicitly in `MapCommands.OnUiThread`.
 
 ```text
 Bridge/
-  BridgeServer.cs     newline-delimited JSON over TCP :6510
-  McpHttpServer.cs    MCP over HTTP on :6520/mcp, loopback only
+  McpHttpServer.cs    MCP over HTTP on :6520/mcp, loopback only -- the only port
   CommandRouter.cs    dispatch, threading, and the Python fallback
+  PythonFallback.cs   client for the optional Python bridge on :6521
   Protocol.cs         request/response shapes and parameter access
 Commands/             one file per subject area
 Clients/McpClients.cs registering this server with AI clients
@@ -54,21 +54,25 @@ UI/Buttons.cs         the ribbon
 Config.daml           ribbon definition and version
 ```
 
-Two transports reach the same commands:
+One transport reaches every command:
 
 ```text
-AI client ──MCP over HTTP :6520/mcp ─┐
-                                     │
-AI client ──MCP stdio──► arcgis-pro-mcp ──TCP :6510──┐
-                                     │               │
-                                     ▼               ▼
-              ┌─ C# add-in (inside the ArcGIS Pro process) ─┐
-              │   → QueuedTask.Run (Main CIM Thread)        │
-              │   anything it does not implement ─┐         │
-              └───────────────────────────────────┼─────────┘
-                                                  ▼ :6511
-                                    Python bridge (execute_arcpy_code)
+AI client ──MCP over HTTP :6520/mcp ──┐
+                                      ▼
+              ┌─ C# add-in (inside the ArcGIS Pro process) ──────────┐
+              │   → QueuedTask.Run (Main CIM Thread)                 │
+              │   execute_arcpy_code → Calculate Value → arcpy       │
+              │   anything else it does not implement ─┐             │
+              └────────────────────────────────────────┼─────────────┘
+                                                       ▼ :6521 (optional)
+                                         Python bridge, if started by hand
 ```
+
+Up to 1.1.1 the add-in also listened on 6510 for a TCP bridge that the
+`arcgis-pro-mcp` stdio relay and a few scripts used. No AI client the add-in
+registers had used it since 1.1.1, and the ribbon's Start/Stop button switched
+*that* listener rather than the MCP endpoint, so "Stop" left every AI client
+connected. It is gone: the relay and the scripts now speak MCP to 6520.
 
 HTTP exists because **stdio cannot work for an in-process server**: a stdio
 client spawns a process and talks to its pipes, and this server is already
@@ -82,16 +86,124 @@ place where a tool is defined.
 
 ## What stays in Python
 
-Three of the 112, and they belong there:
+Two of the 112:
 
 | Command | Why |
 |---|---|
-| `execute_arcpy_code` | a compiled add-in cannot run code composed at call time |
 | `get_pump_status` | it reports on the **Python** bridge's dispatcher, which only exists there |
 | `stop_pump` | likewise — the add-in has no pump to stop, it uses the MCT directly |
 
-Everything else is in the add-in. A command it does not know is forwarded to
-the Python bridge on 6511, which reports clearly if that bridge is not running.
+`execute_arcpy_code` used to be the third. It now runs in the add-in through
+Calculate Value (below), and goes to the Python bridge only if that fails.
+
+A command the add-in does not know is forwarded to the Python bridge on 6521,
+which reports clearly if that bridge is not running. The add-in does not
+listen on 6521 itself; it only connects to it. The one port Pro has open for
+this project is 6520, which goes through Windows' http.sys, so `netstat` shows
+it owned by PID 4 rather than by ArcGISPro.exe.
+
+### The Python bridge and its "pump"
+
+The bridge is a small TCP server inside ArcGIS Pro's own Python. It receives
+commands on a socket thread, but arcpy only resolves
+`ArcGISProject("CURRENT")` on Pro's Python thread. The dispatcher in
+`arcgis_pro_plugin/arcgis_mcp/pump.py` bridges the two: it creates a
+message-only window on that thread, the socket thread queues a job and posts a
+message to it, and Pro's own Windows message loop calls back to run the job.
+Without it, `execute_arcpy_code` can run arcpy on datasets by path but cannot
+touch the open project.
+
+"Pump" is this project's name, borrowed from the Win32 *message pump* (the
+`GetMessage`/`DispatchMessage` loop). It is not Esri terminology: the SDK
+speaks of the Main CIM Thread, `QueuedTask` and the GUI thread, and has no name
+for Pro's Python thread. `get_pump_status` and `stop_pump` therefore carry a
+name neither users nor models can be expected to know.
+
+Two costs come with it:
+
+- **It has to be started by hand**, from Pro's Python window, every session:
+  `import mcp_bridge; mcp_bridge.start_server(port=6521); mcp_bridge.start_pump()`.
+  The auto-start hook (`arcgis_mcp_autostart.py`) starts the server only, not
+  the pump, and installing it needs write access to Pro's `site-packages`
+  under Program Files. Starting the bridge from `ArcGISMCP.pyt` through
+  `run_python_toolbox_tool` stops on Pro's "Allow this toolbox code to run?"
+  security prompt. Its autostart config used to default to port 6510, which
+  the add-in holds; it now defaults to 6521.
+- **It is slow.** Pro services that thread on its own schedule: seconds while
+  in use, up to about 28 s per command while idle (commit 8b41d01) -- the
+  reason the add-in exists.
+
+In practice the third layer is simply absent for anyone who installed only the
+`.esriAddinX`. In the benchmark pilot of 2026-10-16, 11 of 20 agent episodes
+tried `execute_arcpy_code`, got the "not listening on 127.0.0.1:6511" error (the port used up to 1.1.1),
+and fell back to the named tools; 19 of 20 still succeeded.
+
+### Calculate Value runs Python in process, without the pump
+
+Calculate Value here is the **ModelBuilder** tool of that name
+(`management.CalculateValue`), which returns one value from a Python or Arcade
+expression to feed other tools in a model. It is not Raster Calculator or any
+raster tool; the add-in uses it only as a way to run a Python code block inside
+Pro.
+
+Found 2026-10-17 on ArcGIS Pro 3.7.1.1904. `management.CalculateValue`, run
+through the add-in's own geoprocessing path (`run_geoprocessing_tool`, so
+`Geoprocessing.ExecuteToolAsync` on the MCT), executes a Python expression and
+code block inside Pro, and that code **can** resolve the open project:
+
+```python
+# args, positionally: expression, code block, data type
+["probe()",
+ "import arcpy\n"
+ "def probe():\n"
+ "    aprx = arcpy.mp.ArcGISProject('CURRENT')\n"
+ "    return aprx.filePath + ' | ' + ', '.join(l.name for l in aprx.listMaps()[0].listLayers())\n",
+ "String"]
+```
+
+It returned the open project's path and its three layers. Timings, three
+calls in a row with the bridge and pump **not** running:
+
+| Call | Time | Note |
+|---|---|---|
+| 1 | 17.35 s | Pro initialising its Python on first use |
+| 2 | 0.06 s | |
+| 3 | 0.05 s | |
+
+No security prompt: it is a system tool, not a third-party toolbox. The tool is
+not in `gp-parameters.json`, so named parameters are refused and the values
+have to be passed positionally (`args`).
+
+Before building on it:
+
+- **It is outside Esri's documented use.** The tool reference says Calculate
+  Value "is only available from ModelBuilder", not from the Geoprocessing pane
+  or Python. It works through the SDK today; a later release could stop it
+  without notice. Keep the pump as the fallback and check the path at start-up.
+- **Tested next, all on 3.7.1, all passing:**
+
+  | Check | Result | Time |
+  |---|---|---|
+  | Change the open map through `arcpy.mp` (add a layer, rename it, hide another) | the add-in's `get_layers` saw all three changes at once | 1.47 s |
+  | Capture `print()` output | `contextlib.redirect_stdout` returns it | 0.03 s |
+  | Keep variables between calls | a module in `sys.modules` survives; a counter went 1 → 2 and a later call read it | 0.04 s |
+  | An exception in the code | comes back as a full traceback | 0.03 s |
+
+- **Only tested on 3.7.1.** The add-in builds against 3.7 and will not load on
+  anything older, so 3.3 and 3.4 do not arise today; any newer Pro has to be
+  checked again before relying on this path.
+
+`execute_arcpy_code` is now `Commands/PythonCommands.cs`. It writes the code to
+a temporary file under `%LOCALAPPDATA%\ArcGIS-MCP\code`, runs Calculate Value
+with a fixed runner as the code block, and returns what the Python bridge's
+handler used to: `output`, `value`, `variables` and `elapsed_seconds`, with the
+namespace kept in `sys.modules["_arcgis_mcp_session"]`. If Calculate Value
+itself fails to run, the call is logged and forwarded to the Python bridge.
+
+If those hold, `execute_arcpy_code` could run through Calculate Value inside
+the add-in. The third layer would then be on for every user, as fast as the
+other two, with no bridge, no pump, no port and no prompt -- and the pump tools
+could be hidden or renamed.
 
 ---
 

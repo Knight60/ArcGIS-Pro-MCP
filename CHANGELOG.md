@@ -4,6 +4,54 @@ Notable changes, newest first. Versions are the add-in version in
 `addin/ArcGISProMCP/Config.daml`, which is what the ribbon, the installer and
 the MCP handshake all report.
 
+## Unreleased
+
+### Fixed
+
+- **"Stop bridge" did not stop what AI clients connect to.** The ribbon's
+  Start/Stop button, its Status caption and "Requests served" all read the
+  legacy TCP bridge on 6510, while every AI client uses the MCP endpoint on
+  6520. Pressing Stop left clients connected behind a ribbon that said "Not
+  running", and the request count stayed at zero however busy the assistant
+  was. The button and Status now control and report the MCP endpoint itself.
+- **`execute_arcpy_code` -- the third layer -- was missing for almost
+  everyone.** It lived in the optional Python bridge, which has no button: it
+  had to be started from Pro's Python window every session, and its auto-start
+  hook needs administrator rights and does not start the dispatcher that
+  reaches the open project. It now runs inside the add-in, through the
+  ModelBuilder tool Calculate Value, with the open project available, variables
+  kept between calls and `print()` output returned -- about 0.05 s a call after
+  the first, against seconds to ~28 s through the bridge. The Python bridge
+  remains a fallback if Calculate Value ever stops running code. Tested on
+  ArcGIS Pro 3.7.1; see docs/addin.md.
+- **The Python bridge and the add-in were set up to collide on port 6510.**
+  When the C# add-in took over 6510 for its own TCP bridge in 1.0, the Python
+  bridge kept 6510 as its default, and so did the auto-start hook and the
+  installer. The bridge only came up at all because it slides to the next free
+  port, landing on 6511 -- the one port the add-in looks on, but one nothing
+  ever configured. Anyone starting it on its default with that slide turned
+  off, or with 6511 taken, got a bridge the add-in could not find, and
+  `execute_arcpy_code` -- the third layer -- dropped out with only the
+  "not listening" error to show for it. The bridge now has a port of its own,
+  **6521**, beside the MCP endpoint on 6520: its default, the auto-start hook,
+  the installer, the address the add-in forwards to, and the error that tells
+  you how to start it all say 6521. Restart a bridge left running on the old
+  port after upgrading. Nothing changes for AI clients: they still connect to
+  `http://127.0.0.1:6520/mcp`.
+- **The README said the add-in listens on the Python fallback port.** It does
+  not: the add-in connects to that port, and only the Python bridge listens on
+  it.
+
+### Removed
+
+- **The TCP bridge on 6510.** The add-in now opens one port, 6520, the one the
+  ribbon shows and every AI client uses. The `arcgis-pro-mcp` stdio relay and
+  the scripts that spoke to 6510 (`restart_pro.ps1`, `make_demo_gif.py`) now
+  send MCP calls to 6520 instead, and fall back to a Python bridge only when no
+  add-in is running. `ping` and `diagnose` no longer report a TCP port. A setup
+  that still points something at 127.0.0.1:6510 should point it at
+  `http://127.0.0.1:6520/mcp`.
+
 ## 1.1.1 — 2026-09-07
 
 ### Fixed

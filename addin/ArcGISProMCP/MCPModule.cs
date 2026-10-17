@@ -7,8 +7,8 @@ using ArcGISProMCP.Bridge;
 namespace ArcGISProMCP
 {
     /// <summary>
-    /// The add-in itself. Marked autoLoad in Config.daml, so the bridge comes
-    /// up with ArcGIS Pro and there is nothing for the user to start.
+    /// The add-in itself. Marked autoLoad in Config.daml, so the MCP server
+    /// comes up with ArcGIS Pro and there is nothing for the user to start.
     /// </summary>
     internal class MCPModule : Module
     {
@@ -17,9 +17,10 @@ namespace ArcGISProMCP
         public static MCPModule Current =>
             _instance ??= (MCPModule)FrameworkApplication.FindModule("ArcGISProMCP_Module");
 
-        public BridgeServer Server { get; } = new BridgeServer();
-
-        /// <summary>MCP straight over HTTP, so no separate server process is needed.</summary>
+        /// <summary>
+        /// MCP over HTTP on 127.0.0.1:6520 -- the one port the add-in opens,
+        /// and the one the ribbon's Start/Stop button and Status report on.
+        /// </summary>
         public McpHttpServer Mcp { get; } = new McpHttpServer();
 
         /// <summary>Set when startup failed, so the Status button can explain.</summary>
@@ -66,22 +67,12 @@ namespace ArcGISProMCP
 
             try
             {
-                Log(Server.Start());
-            }
-            catch (Exception exception)
-            {
-                StartupError = $"Could not start the bridge: {exception}";
-                Log(StartupError);
-            }
-
-            try
-            {
                 Log(Mcp.Start());
             }
             catch (Exception exception)
             {
-                // The TCP bridge still works without this, so it is not fatal.
-                Log($"Could not start MCP over HTTP: {exception.Message}");
+                StartupError = $"Could not start MCP over HTTP: {exception.Message}";
+                Log(StartupError);
             }
 
             return true;
@@ -90,14 +81,12 @@ namespace ArcGISProMCP
         protected override void Uninitialize()
         {
             try { Log(Mcp.Stop()); } catch { /* shutting down */ }
-            try { Log(Server.Stop()); } catch { /* shutting down */ }
             base.Uninitialize();
         }
 
         protected override bool CanUnload()
         {
             Mcp.Stop();
-            Server.Stop();
             return true;
         }
     }

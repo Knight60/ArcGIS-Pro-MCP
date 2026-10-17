@@ -43,6 +43,7 @@ namespace ArcGISProMCP.Bridge
         public int Port { get; private set; }
         public int RequestCount { get; private set; }
         public string LastError { get; private set; }
+        public DateTime? StartedAt { get; private set; }
 
         private sealed class ToolDefinition
         {
@@ -75,6 +76,8 @@ namespace ArcGISProMCP.Bridge
             Port = port;
             IsRunning = true;
             RequestCount = 0;
+            LastError = null;
+            StartedAt = DateTime.Now;
             _cancellation = new CancellationTokenSource();
             _ = Task.Run(() => AcceptLoopAsync(_cancellation.Token));
 

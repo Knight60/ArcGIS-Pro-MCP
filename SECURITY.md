@@ -8,8 +8,10 @@ While ArcGIS Pro is open and the bridge is running, the add-in listens on
 | Port | What answers |
 |---|---|
 | `127.0.0.1:6520` | MCP over HTTP — the endpoint AI clients connect to |
-| `127.0.0.1:6510` | the TCP bridge |
-| `127.0.0.1:6511` | the in-Pro Python fallback, for `execute_arcpy_code` |
+
+The optional Python bridge, if someone starts it by hand inside ArcGIS Pro,
+also listens on `127.0.0.1:6521`; the add-in only connects to it as a fallback
+for `execute_arcpy_code`.
 
 Nothing binds a routable address, and nothing is reachable from another
 machine. There is no authentication: anything that can open a loopback socket

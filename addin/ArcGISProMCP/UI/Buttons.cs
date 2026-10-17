@@ -103,7 +103,7 @@ namespace ArcGISProMCP.UI
     {
         protected override void OnUpdate()
         {
-            var running = MCPModule.Current?.Server?.IsRunning ?? false;
+            var running = MCPModule.Current?.Mcp?.IsRunning ?? false;
 
             Caption = running ? "Stop bridge" : "Start bridge";
             LargeImage = Icons.Get(running ? "Stop" : "Start");
@@ -118,7 +118,10 @@ namespace ArcGISProMCP.UI
 
         protected override void OnClick()
         {
-            var server = MCPModule.Current.Server;
+            // This used to switch the legacy TCP bridge on 6510, so "Stop" left
+            // the MCP endpoint every AI client uses running behind a ribbon
+            // that said it was stopped.
+            var server = MCPModule.Current.Mcp;
             try
             {
                 var message = server.IsRunning ? server.Stop() : server.Start();
@@ -139,14 +142,12 @@ namespace ArcGISProMCP.UI
     {
         protected override void OnUpdate()
         {
-            var server = MCPModule.Current?.Server;
+            var server = MCPModule.Current?.Mcp;
             var running = server?.IsRunning ?? false;
 
             LargeImage = Icons.Get(running ? "StatusOn" : "StatusOff");
             SmallImage = Icons.Get(running ? "StatusOn" : "StatusOff", 16);
-            // The MCP port, not the TCP bridge's. This button used to show
-            // 6510, which is the one number no AI client ever needs.
-            Caption = running ? $"Port {McpHttpServer.DefaultPort}" : "Not running";
+            Caption = running ? $"Port {server.Port}" : "Not running";
             TooltipHeading = running ? "Bridge is listening" : "Bridge is stopped";
             Tooltip = running
                 ? $"AI clients connect to {McpClientCatalog.HttpUrl}\n\n"
@@ -157,15 +158,13 @@ namespace ArcGISProMCP.UI
 
         protected override void OnClick()
         {
-            var server = MCPModule.Current.Server;
+            var server = MCPModule.Current.Mcp;
             var report = new StringBuilder();
 
             // The URL first: it is the one line anyone reading this needs.
             report.AppendLine(server.IsRunning
                 ? $"AI clients connect to {McpClientCatalog.HttpUrl}"
                 : "Not listening.");
-            report.AppendLine($"Legacy TCP bridge: 127.0.0.1:{server.Port} "
-                            + "(older Python scripts only)");
             report.AppendLine($"Commands implemented here: {CommandRouter.Count}");
             report.AppendLine($"Requests served: {server.RequestCount}");
             if (server.StartedAt.HasValue)
@@ -183,9 +182,8 @@ namespace ArcGISProMCP.UI
             }
 
             report.AppendLine();
-            report.AppendLine("Anything not implemented here is forwarded to the Python "
-                            + $"bridge on port {PythonFallback.Port}, which is where arcpy "
-                            + "and execute_arcpy_code live. That bridge is optional.");
+            report.AppendLine("execute_arcpy_code runs inside ArcGIS Pro through the "
+                            + "ModelBuilder tool Calculate Value; nothing else needs starting.");
 
             if (!string.IsNullOrEmpty(MCPModule.Current.StartupError))
             {
