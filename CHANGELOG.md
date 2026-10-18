@@ -8,6 +8,12 @@ the MCP handshake all report.
 
 ### Fixed
 
+- **Code that ran `sys.executable` started a second ArcGIS Pro and froze the
+  first.** Inside Pro, `sys.executable` is `ArcGISPro.exe`, so the common
+  `subprocess.run([sys.executable, "-m", "pip", ...])` in `execute_arcpy_code`
+  opened a new, empty Pro and waited for it on the Main CIM Thread. While user
+  code runs, `sys.executable` now points at the environment's `python.exe`, and
+  `input()` gets an empty stdin instead of waiting for a console.
 - **`activate_map` froze ArcGIS Pro for good.** It ran on the Main CIM Thread
   and waited there for the map pane to open, but opening a pane is UI-thread
   work that itself queues onto the Main CIM Thread, so each waited for the

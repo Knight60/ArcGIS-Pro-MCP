@@ -56,7 +56,18 @@ def _arcgis_mcp_run(path, reset):
     started = time.time()
     result = {}
     value = None
+    # Inside Pro, sys.executable is ArcGISPro.exe, so the common
+    # subprocess.run([sys.executable, "-m", "pip", ...]) starts a second Pro
+    # and waits for it on the Main CIM Thread, freezing the first. Point it at
+    # the environment's python.exe while user code runs; give input() an empty
+    # stdin so it fails instead of waiting for a console that is not there.
+    import os
+    executable, stdin = sys.executable, sys.stdin
+    python = os.path.join(sys.prefix, "python.exe")
     try:
+        if os.path.basename(executable).lower() != "python.exe" and os.path.exists(python):
+            sys.executable = python
+        sys.stdin = io.StringIO()
         tree = ast.parse(code, mode="exec")
         body = list(tree.body)
         tail = None
@@ -69,6 +80,8 @@ def _arcgis_mcp_run(path, reset):
                 value = eval(compile(tail, "<mcp>", "eval"), namespace)
     except BaseException:
         result["error"] = traceback.format_exc(limit=8)
+    finally:
+        sys.executable, sys.stdin = executable, stdin
 
     output = buffer.getvalue()
     result["elapsed_seconds"] = round(time.time() - started, 3)
