@@ -4,7 +4,13 @@ Notable changes, newest first. Versions are the add-in version in
 `addin/ArcGISProMCP/Config.daml`, which is what the ribbon, the installer and
 the MCP handshake all report.
 
-## Unreleased
+## 1.2.0 — unreleased
+
+Development builds of this version were used for the paper's pilot runs and are
+identified there by the first 8 hex digits of the add-in's SHA-256: `c0a91663`
+(ArcPy through Calculate Value, port 6520 only), `fda07d92` (activate_map and
+save_edits fixes) and `81bfbdcb` (sys.executable fix). All three still reported
+version 1.1.1.
 
 ### Fixed
 
