@@ -32,7 +32,7 @@ falls through three layers, and takes the fastest one that can answer it:
 
 | | | |
 |---|---|---|
-| **1** | **112 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 110 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
+| **1** | **114 named tools**, written in C# | Layers, attributes, selections, symbology, layouts, rasters, editing — the work of an ordinary day. 112 of them execute inside ArcGIS Pro's own process, in about **9 ms** each. |
 | **2** | **Every geoprocessing tool** | `run_geoprocessing_tool` runs any of Pro's ~2,000 tools by name, with named parameters rather than a positional list to miscount. Still in-process, still C#. |
 | **3** | **Arbitrary arcpy** | `execute_arcpy_code` hands Python straight to arcpy in the running application, with the open project available. Whatever the layers above have no tool for, this reaches. |
 
@@ -214,7 +214,7 @@ connected, and the last error.
 
 <!-- TOOLS:START -->
 
-**112 tools.** Anything not listed is still reachable through `run_geoprocessing_tool` or `execute_arcpy_code`.
+**114 tools.** Anything not listed is still reachable through `run_geoprocessing_tool` or `execute_arcpy_code`.
 
 ### Session and project (14)
 
@@ -259,7 +259,7 @@ connected, and the last error.
 | `add_join` | Join a table to a layer on a common field |
 | `remove_join` | Remove a join from a layer |
 
-### Attributes and editing (11)
+### Attributes and editing (12)
 
 | Tool | What it does |
 |---|---|
@@ -273,6 +273,7 @@ connected, and the last error.
 | `delete_features` ⚠️ | Delete rows matching a where clause |
 | `save_edits` | Commit pending edits |
 | `discard_edits` | Throw away pending edits |
+| `xy_table_to_point` | Make a point feature class from a table or CSV that has coordinate columns, such as lon/lat in WGS 84, and add it to the map |
 | `calculate_field` | Calculate field values across a layer, e.g |
 
 ### Selection (6)
@@ -342,7 +343,7 @@ connected, and the last error.
 | Tool | What it does |
 |---|---|
 | `list_layouts` | List the print layouts with page size and element counts |
-| `get_layout_info` | Inspect a layout: page setup and every element with position and size |
+| `get_layout_info` | Inspect a layout: page setup and every element with position and size, and the text of text elements such as the title |
 | `create_layout` | Create a new layout page, by default with a map frame filling it |
 | `delete_layout` ⚠️ | Delete a layout from the project |
 | `add_map_frame` | Add a map frame to a layout at a page position |
@@ -358,7 +359,7 @@ connected, and the last error.
 | `preview_layout` 🖼️ | Render a layout to a temporary image and return it, without writing a file -- use it to visually check a layout while building it |
 | `export_map_series` | Export a layout's map series (map book) to a multi-page PDF |
 
-### Raster (5)
+### Raster (6)
 
 | Tool | What it does |
 |---|---|
@@ -366,6 +367,7 @@ connected, and the last error.
 | `set_raster_symbology` | Set a raster layer's colorizer and colour ramp |
 | `raster_calculator` | Map algebra |
 | `sample_raster_values` | Read raster cell values at map coordinates or at a point layer's features |
+| `tabulate_area` | Area of each class of a categorical raster (land cover, zoning) inside each zone polygon, with the rows returned |
 | `zonal_statistics` | Summarise raster values inside zone polygons and return the table |
 
 ### Finding and inspecting data (6)
@@ -450,7 +452,7 @@ earlier all-Python version had to hand work to Pro's Python thread and wait,
 which took around 28 seconds per call. The add-in uses `QueuedTask.Run`
 directly: **9 ms**.
 
-Two of the 112 tools stay on the Python side: `get_pump_status` and
+Two of the 114 tools stay on the Python side: `get_pump_status` and
 `stop_pump`, which report on the optional Python bridge's own dispatcher. That
 bridge (127.0.0.1:6521) is now only a fallback for `execute_arcpy_code`, used
 if Calculate Value ever stops running code; nothing needs to start it.

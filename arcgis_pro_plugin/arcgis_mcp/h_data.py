@@ -350,3 +350,27 @@ def discard_edits(params):
     """Throw away pending edits (arcpy has already committed them)."""
     return {"discarded": False,
             "message": "arcpy commits edits as it makes them; nothing to discard."}
+
+
+@command("xy_table_to_point", GROUP)
+def xy_table_to_point(params):
+    """Make points from a table or CSV with coordinate columns."""
+    import os
+    import re
+    from .common import add_layer_once, get_map, project
+    proj = project()
+    table = params["table"]
+    out_path = params.get("out_path")
+    if not out_path:
+        stem = re.sub(r"\W", "_", os.path.splitext(os.path.basename(table.rstrip("\/")))[0]) or "table"
+        if stem[0].isdigit():
+            stem = "t_" + stem
+        out_path = os.path.join(proj.defaultGeodatabase, stem + "_points")
+    arcpy.management.XYTableToPoint(
+        table, out_path, params["x_field"], params["y_field"],
+        params.get("z_field") or "", arcpy.SpatialReference(int(params.get("epsg", 4326))))
+    result = {"output": out_path, "count": int(arcpy.management.GetCount(out_path)[0])}
+    if params.get("add_to_map", True):
+        layer, _ = add_layer_once(get_map(proj, None), out_path)
+        result["layer"] = getattr(layer, "name", None)
+    return result

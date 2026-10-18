@@ -26,14 +26,14 @@ if (notification.StatusCode != HttpStatusCode.Accepted) throw new Exception("Not
 await Call("ping", new { });
 var list = await Call("tools/list", new { });
 var names = list.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToArray();
-if (names.Length != 112 || names.Distinct().Count() != names.Length) throw new Exception("Tool catalog");
+if (names.Length != 114 || names.Distinct().Count() != names.Length) throw new Exception("Tool catalog");
 var result = await Call("tools/call", new { name = "get_project_info", arguments = new { } });
 if (!result.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString().Contains("stub-project")) throw new Exception("Dispatch");
 var error = await Call("tools/call", new { name = "missing_tool", arguments = new { } });
 if (!error.GetProperty("result").GetProperty("isError").GetBoolean()) throw new Exception("Tool error");
 using var get = await http.GetAsync("mcp");
 if (get.StatusCode != HttpStatusCode.MethodNotAllowed) throw new Exception("GET must reject unsupported SSE");
-Console.WriteLine("PASS HTTP: initialize, notification, ping, 112 tools, dispatch, tool error, GET 405");
+Console.WriteLine("PASS HTTP: initialize, notification, ping, 114 tools, dispatch, tool error, GET 405");
 
 namespace ArcGISProMCP.Bridge
 {

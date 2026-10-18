@@ -70,6 +70,22 @@ namespace ArcGISProMCP.Commands
             return dispatcher.Invoke(work);
         }
 
+        /// <summary>Switch editing on if the project has it off; true if it did.</summary>
+        internal static async Task<bool> EnsureEditingEnabled()
+        {
+            var project = Project.Current;
+            if (project == null || project.IsEditingEnabled) return false;
+            var switchedOn = false;
+            await OnUiThread(async () =>
+            {
+                switchedOn = await project.SetIsEditingEnabledAsync(true).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+            if (!switchedOn)
+                throw new InvalidOperationException(
+                    "Editing is off in this project and ArcGIS Pro would not switch it on.");
+            return true;
+        }
+
         internal static Task SaveEditsOnUiThread() =>
             OnUiThread(() => Project.Current.SaveEditsAsync());
 

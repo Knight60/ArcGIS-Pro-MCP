@@ -40,7 +40,7 @@ namespace ArcGISProMCP.Commands
         private const string Runner = """
 import ast, contextlib, io, json, sys, time, traceback, types
 
-def _arcgis_mcp_run(path, reset):
+def _arcgis_mcp_run(path, reset, timeout=600):
     import arcpy
     module = sys.modules.get("_arcgis_mcp_session")
     if module is None or reset:
@@ -64,6 +64,18 @@ def _arcgis_mcp_run(path, reset):
     import os
     executable, stdin = sys.executable, sys.stdin
     python = os.path.join(sys.prefix, "python.exe")
+    # The code runs on Pro's Main CIM Thread, so code that never ends freezes
+    # Pro. A timer raises TimeoutError in it after `timeout` seconds. Python can
+    # only deliver that between bytecodes: a call blocked inside C (waiting on a
+    # process, a socket, a long geoprocessing tool) is interrupted when it returns.
+    import ctypes, threading
+    target = threading.get_ident()
+    def _interrupt():
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(target), ctypes.py_object(TimeoutError))
+    timer = threading.Timer(timeout, _interrupt) if timeout and timeout > 0 else None
+    if timer is not None:
+        timer.daemon = True
+        timer.start()
     try:
         if os.path.basename(executable).lower() != "python.exe" and os.path.exists(python):
             sys.executable = python
@@ -78,9 +90,15 @@ def _arcgis_mcp_run(path, reset):
                 exec(compile(ast.Module(body, type_ignores=[]), "<mcp>", "exec"), namespace)
             if tail is not None:
                 value = eval(compile(tail, "<mcp>", "eval"), namespace)
+    except TimeoutError:
+        result["error"] = ("TimeoutError: the code was stopped after {} s (timeout_seconds). "
+                           "Variables set before that point are kept.\n".format(timeout)
+                           + traceback.format_exc(limit=4))
     except BaseException:
         result["error"] = traceback.format_exc(limit=8)
     finally:
+        if timer is not None:
+            timer.cancel()
         sys.executable, sys.stdin = executable, stdin
 
     output = buffer.getvalue()
@@ -113,13 +131,14 @@ def _arcgis_mcp_run(path, reset):
         {
             var code = parameters.Require("code");
             var reset = parameters.GetBool("reset_namespace");
+            var timeout = parameters.Has("timeout_seconds") ? parameters.GetInt("timeout_seconds") : 600;
 
             Directory.CreateDirectory(CodeFolder);
             var path = Path.Combine(CodeFolder, $"{Guid.NewGuid():N}.py");
             File.WriteAllText(path, code, new UTF8Encoding(false));
             try
             {
-                var expression = $"_arcgis_mcp_run(r\"{path}\", {(reset ? "True" : "False")})";
+                var expression = $"_arcgis_mcp_run(r\"{path}\", {(reset ? "True" : "False")}, {timeout})";
                 var result = await Geoprocessing.ExecuteToolAsync(
                     "management.CalculateValue",
                     Geoprocessing.MakeValueArray(expression, Runner, "String"),

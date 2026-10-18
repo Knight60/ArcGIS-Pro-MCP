@@ -86,7 +86,7 @@ place where a tool is defined.
 
 ## What stays in Python
 
-Two of the 112:
+Two of the 114:
 
 | Command | Why |
 |---|---|

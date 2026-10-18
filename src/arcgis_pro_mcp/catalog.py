@@ -285,7 +285,8 @@ CATALOG: List[Tool] = [
       MAP_NAME),
 
     T("insert_features", "Data",
-      "Insert new rows into a layer or table.",
+      "Insert new rows into a layer or table. Switches editing on if the "
+      "project requires it.",
       LAYER,
       P("features", "list[dict]", REQUIRED,
         'Rows, e.g. [{"attributes": {"NAME": "A"}, "geometry": '
@@ -299,7 +300,8 @@ CATALOG: List[Tool] = [
       MAP_NAME),
 
     T("update_features", "Data",
-      "Update attributes and/or geometry of rows matching a where clause.",
+      "Update attributes and/or geometry of rows matching a where clause. "
+      "Switches editing on if the project requires it.",
       LAYER,
       P("attributes", "dict", None, 'Field/value pairs to write.'),
       P("geometry", "str", None, "New geometry as WKT, applied to every match."),
@@ -315,7 +317,8 @@ CATALOG: List[Tool] = [
       MAP_NAME, destructive=True),
 
     T("delete_features", "Data",
-      "Delete rows matching a where clause.",
+      "Delete rows matching a where clause. Switches editing on if the project "
+      "requires it.",
       LAYER,
       P("where", "str", None, "SQL where clause selecting rows to delete."),
       P("allow_delete_all", "bool", False,
@@ -332,6 +335,18 @@ CATALOG: List[Tool] = [
 
     T("discard_edits", "Data",
       "Throw away pending edits."),
+
+    T("xy_table_to_point", "Data",
+      "Make a point feature class from a table or CSV that has coordinate "
+      "columns, such as lon/lat in WGS 84, and add it to the map.",
+      P("table", "str", REQUIRED, "Table in the map, or a CSV / table path."),
+      P("x_field", "str", REQUIRED, "Column with x or longitude."),
+      P("y_field", "str", REQUIRED, "Column with y or latitude."),
+      P("z_field", "str", None, "Optional column with z."),
+      P("epsg", "int", 4326, "Coordinate system of the x/y values (4326 = WGS 84 lon/lat)."),
+      P("out_path", "str", None,
+        "Output feature class; default <table>_points in the project geodatabase."),
+      P("add_to_map", "bool", True, "Add the result to the map.")),
 
     T("calculate_field", "Data",
       "Calculate field values across a layer, e.g. expression \"!Shape_Area! "
@@ -673,7 +688,8 @@ CATALOG: List[Tool] = [
       "List the print layouts with page size and element counts."),
 
     T("get_layout_info", "Layouts",
-      "Inspect a layout: page setup and every element with position and size.",
+      "Inspect a layout: page setup and every element with position and size, "
+      "and the text of text elements such as the title.",
       P("layout_name", "str", REQUIRED, "Layout name.")),
 
     T("create_layout", "Layouts",
@@ -852,6 +868,22 @@ CATALOG: List[Tool] = [
       P("limit", "int", 100, "Maximum points to sample from a layer."),
       MAP_NAME),
 
+    T("tabulate_area", "Raster",
+      "Area of each class of a categorical raster (land cover, zoning) inside "
+      "each zone polygon, with the rows returned. Columns VALUE_<class> hold "
+      "areas in the zone layer's square units; a raster that codes missing "
+      "data as a value (often 0) gets its own column, which a share usually "
+      "leaves out. Requires the Spatial Analyst extension.",
+      P("zone_layer", "str", REQUIRED, "Polygon layer defining the zones."),
+      P("zone_field", "str", REQUIRED, "Field identifying each zone."),
+      P("class_raster", "str", REQUIRED, "Categorical raster layer or path."),
+      P("class_field", "str", "Value", "Raster field holding the class."),
+      P("output_table", "str", None,
+        "Where to write the table; default <zone layer>_tabulate_area in the "
+        "project geodatabase."),
+      P("cell_size", "str", None, "Processing cell size; default the raster's."),
+      MAP_NAME),
+
     T("zonal_statistics", "Raster",
       "Summarise raster values inside zone polygons and return the table. "
       "Requires the Spatial Analyst extension.",
@@ -913,7 +945,10 @@ CATALOG: List[Tool] = [
       "covers the task.",
       P("code", "str", REQUIRED, "Python source to run."),
       P("reset_namespace", "bool", False,
-        "Forget variables kept from earlier calls.")),
+        "Forget variables kept from earlier calls."),
+      P("timeout_seconds", "int", 600,
+        "Stop the code after this many seconds (0 = no limit). A call blocked "
+        "inside a tool or an external process stops when it returns.")),
 
     T("get_pump_status", "Utility",
       "Whether the main-thread dispatcher is installed. It is what lets "

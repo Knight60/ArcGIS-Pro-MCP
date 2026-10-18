@@ -24,7 +24,7 @@ useful than a description of it.
 ## Adding a command
 
 1. Define it in `src/arcgis_pro_mcp/catalog.py` — the single source of truth
-   for all 112 tools.
+   for all 114 tools.
 2. Write the handler under `addin/ArcGISProMCP/Commands/`, grouped by subject,
    and register it with `CommandRouter.Register`.
 3. `.\scripts\build.ps1`

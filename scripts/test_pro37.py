@@ -25,7 +25,7 @@ async def run(output):
             assert initialized.serverInfo.version == "1.1.1.0", initialized.serverInfo
             evidence["server"] = initialized.serverInfo.model_dump()
             tools = await session.list_tools()
-            assert len(tools.tools) == 112
+            assert len(tools.tools) == 114
 
             async def call(name, **args):
                 result = await session.call_tool(name, args)

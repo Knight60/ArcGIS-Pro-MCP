@@ -277,9 +277,15 @@ namespace ArcGISProMCP.Commands
         private static AsyncCommandHandler ThenMaybeSave(CommandHandler edit) =>
             async parameters =>
             {
+                // With "Enable and disable editing from the Edit tab" set in Pro's
+                // options, every edit fails until editing is switched on. The
+                // caller asked to edit, so switch it on rather than fail.
+                var enabled = await MapCommands.EnsureEditingEnabled().ConfigureAwait(false);
                 var result = await QueuedTask.Run(() => edit(parameters)).ConfigureAwait(false);
                 if (parameters.GetBool("save_edits") && Project.Current?.HasEdits == true)
                     await MapCommands.SaveEditsOnUiThread().ConfigureAwait(false);
+                if (enabled && result is Dictionary<string, object> report)
+                    report["editing_enabled"] = "Editing was off in this project and was switched on.";
                 return result;
             };
 

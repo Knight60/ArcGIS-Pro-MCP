@@ -216,3 +216,35 @@ def zonal_statistics(params):
             rows.append(dict(zip(fields, row)))
     return {"zone_layer": str(zone_layer), "raster": params["raster_layer"],
             "output_table": out_table, "rows": rows}
+
+
+@command("tabulate_area", GROUP)
+def tabulate_area(params):
+    """Area of each raster class inside each zone; returns the table rows."""
+    proj = project()
+    m = get_map(proj, params.get("map_name"))
+    zone_layer = params["zone_layer"]
+    zones = zone_layer if looks_like_path(zone_layer) else find_layer(m, zone_layer)
+    raster = _raster_source(m, params["class_raster"])
+    out_table = resolve_path(
+        params.get("output_table") or "in_memory/tabulate_area_result", proj)
+
+    status = arcpy.CheckOutExtension("Spatial")
+    if status != "CheckedOut":
+        raise RuntimeError("Spatial Analyst is required (status: {})".format(status))
+    try:
+        arcpy.sa.TabulateArea(zones, params["zone_field"], raster,
+                              params.get("class_field", "Value"), out_table,
+                              params.get("cell_size") or "")
+    finally:
+        arcpy.CheckInExtension("Spatial")
+
+    fields = [f.name for f in arcpy.ListFields(out_table)
+              if f.type not in ("OID", "Geometry", "Blob", "Raster")]
+    rows = []
+    with arcpy.da.SearchCursor(out_table, fields) as cursor:
+        for row in cursor:
+            rows.append(dict(zip(fields, row)))
+            if len(rows) >= 500:
+                break
+    return {"output_table": out_table, "rows": rows}

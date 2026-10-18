@@ -128,6 +128,12 @@ namespace ArcGISProMCP.Commands
                 info["map"] = frame.Map?.Name;
                 info["scale"] = frame.Camera?.Scale;
             }
+            // Without the text an agent cannot check the title it just added.
+            if (element is TextElement text)
+            {
+                try { info["text"] = text.TextProperties?.Text; }
+                catch { /* the text of a dynamic element may not be readable */ }
+            }
             return info;
         }
 

@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 using ArcGIS.Desktop.Core;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGISProMCP.Bridge;
 
 namespace ArcGISProMCP.Commands
@@ -59,7 +62,19 @@ namespace ArcGISProMCP.Commands
                     ["expression"] = p.Require("expression"),
                     ["expression_type"] = p.GetString("expression_type", "PYTHON3"),
                     ["code_block"] = p.GetString("code_block"),
-                });
+                }, explainFailure: JoinedFieldHint);
+
+            Wrap("xy_table_to_point", "data",
+                "Make a point feature class from a table or CSV with coordinate columns.",
+                "management.XYTableToPoint", p => new Dictionary<string, object>
+                {
+                    ["in_table"] = p.Require("table"),
+                    ["out_feature_class"] = p.GetString("out_path") ?? DefaultOutput(p.Require("table"), "_points"),
+                    ["x_field"] = p.Require("x_field"),
+                    ["y_field"] = p.Require("y_field"),
+                    ["z_field"] = p.GetString("z_field"),
+                    ["coordinate_system"] = p.GetInt("epsg", 4326).ToString(),
+                }, addToMapByDefault: true);
 
             Wrap("create_feature_class", "schema",
                 "Create an empty feature class in a geodatabase or folder.",
@@ -155,6 +170,58 @@ namespace ArcGISProMCP.Commands
                                         "zonal_stats"),
                     ["ignore_nodata"] = p.GetString("ignore_nodata", "DATA"),
                     ["statistics_type"] = p.GetString("statistics_type", "ALL"),
+                });
+
+            // Area of each class of a categorical raster (land cover) inside each zone.
+            // Returns the rows as well as the table: the share of a class is what the
+            // caller wants, and reading the table back is one more call to get wrong.
+            CommandRouter.RegisterAsync("tabulate_area", "raster",
+                "Area of each raster class inside each zone, with the rows returned.",
+                async p =>
+                {
+                    var outTable = p.GetString("output_table")
+                                   ?? DefaultOutput(p.Require("zone_layer"), "_tabulate_area");
+                    var started = DateTime.Now;
+                    var result = await GeoprocessingCommands.RunNamedAsync("sa.TabulateArea",
+                        new Dictionary<string, object>
+                        {
+                            ["in_zone_data"] = p.Require("zone_layer"),
+                            ["zone_field"] = p.Require("zone_field"),
+                            ["in_class_data"] = p.Require("class_raster"),
+                            ["class_field"] = p.GetString("class_field", "Value"),
+                            ["out_table"] = outTable,
+                            ["processing_cell_size"] = p.GetString("cell_size"),
+                        }, false).ConfigureAwait(false);
+                    if (result.IsFailed)
+                        throw new InvalidOperationException("tabulate_area failed: " + string.Join("; ",
+                            result.ErrorMessages?.Select(m => m.Text) ?? new[] { "no error text" }));
+
+                    var rows = await QueuedTask.Run(() =>
+                    {
+                        var json = JsonSerializer.Serialize(new Dictionary<string, string> { ["layer_name"] = outTable });
+                        using var source = DataSource.Resolve(new Params(JsonDocument.Parse(json).RootElement));
+                        var fields = source.Definition.GetFields().Select(f => f.Name)
+                            .Where(n => !n.Equals("OBJECTID", StringComparison.OrdinalIgnoreCase)).ToList();
+                        var read = new List<Dictionary<string, object>>();
+                        using var cursor = source.Search(null);
+                        while (cursor.MoveNext() && read.Count < 500)
+                        {
+                            using var row = cursor.Current;
+                            read.Add(fields.ToDictionary(f => f, f => MapHelpers.Normalise(row[f])));
+                        }
+                        return read;
+                    }).ConfigureAwait(false);
+
+                    return new Dictionary<string, object>
+                    {
+                        ["output_table"] = outTable,
+                        ["note"] = "Columns VALUE_<class> hold the area of that class in each zone, in "
+                                   + "the square units of the zone layer's coordinate system. NoData cells are "
+                                   + "not counted; a raster that codes missing data as a value (often 0) gets a "
+                                   + "VALUE_0 column, which a share usually has to leave out.",
+                        ["rows"] = rows,
+                        ["elapsed_seconds"] = Math.Round((DateTime.Now - started).TotalSeconds, 2),
+                    };
                 });
 
             Wrap("sample_raster_values", "raster",
@@ -255,10 +322,46 @@ namespace ArcGISProMCP.Commands
         /// <summary>The layer name or dataset path a command acts on.</summary>
         private static string Target(Params parameters) => parameters.Require("layer_name");
 
+        /// <summary>A geodatabase path named after the input, for outputs the caller did not name.</summary>
+        private static string DefaultOutput(string input, string suffix)
+        {
+            var stem = Path.GetFileNameWithoutExtension(input.TrimEnd('\\', '/'));
+            var clean = new string(stem.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+            if (clean.Length == 0 || char.IsDigit(clean[0])) clean = "t_" + clean;
+            return Path.Combine(Project.Current?.DefaultGeodatabasePath ?? "", clean + suffix);
+        }
+
+        /// <summary>
+        /// After a join, fields must be named with their table, e.g.
+        /// !cm_districts.area_sqkm!. An agent that writes !area_sqkm! gets a
+        /// syntax error about an empty value and concluded the data was empty,
+        /// so name the qualified fields when the layer has any.
+        /// </summary>
+        private static async Task<string> JoinedFieldHint(Params parameters)
+        {
+            try
+            {
+                var names = await QueuedTask.Run(() =>
+                {
+                    using var source = DataSource.Resolve(parameters);
+                    return source.Definition.GetFields().Select(f => f.Name).ToList();
+                }).ConfigureAwait(false);
+                var qualified = names.Where(n => n.Contains('.')).ToList();
+                if (qualified.Count == 0) return null;
+                return "This layer has a join, so fields must be named with their table, e.g. !"
+                       + qualified[0] + "!. Fields: " + string.Join(", ", qualified.Take(40));
+            }
+            catch
+            {
+                return null;   // the hint is a courtesy; never hide the original error
+            }
+        }
+
         private static void Wrap(string command, string group, string summary,
                                  string toolName,
                                  Func<Params, Dictionary<string, object>> buildValues,
-                                 bool addToMapByDefault = false)
+                                 bool addToMapByDefault = false,
+                                 Func<Params, Task<string>> explainFailure = null)
         {
             CommandRouter.RegisterAsync(command, group, summary, async parameters =>
             {
@@ -276,7 +379,10 @@ namespace ArcGISProMCP.Commands
                     var messages = result.ErrorMessages != null && result.ErrorMessages.Any()
                         ? string.Join("; ", result.ErrorMessages.Select(m => m.Text))
                         : "the tool reported no error text";
-                    throw new InvalidOperationException($"{command} failed: {messages}");
+                    var hint = explainFailure == null
+                        ? null : await explainFailure(parameters).ConfigureAwait(false);
+                    throw new InvalidOperationException(
+                        $"{command} failed: {messages}" + (hint == null ? "" : " -- " + hint));
                 }
 
                 return new Dictionary<string, object>

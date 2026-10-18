@@ -141,7 +141,7 @@ python -c "import sys; sys.path.insert(0,'src'); from arcgis_pro_mcp.connection 
 
 From doing it for real, 3.5.2 (net8.0) to 3.7.1 (net10.0):
 
-1. Change `TargetFramework` to match and build. **None of the 109 commands
+1. Change `TargetFramework` to match and build. **None of the 112 commands
    needed a single line changed** — every error was about the framework, none
    about a missing or altered API.
 2. **Regenerate `gp-parameters.json`** using the new version's arcpy:
@@ -224,14 +224,14 @@ existing installation to tell an upgrade from a repeat run.
 ## Repository layout
 
 ```text
-addin/ArcGISProMCP/     The C# add-in -- 109 of the 112 commands
+addin/ArcGISProMCP/     The C# add-in -- 112 of the 114 commands
   Bridge/               TCP server, MCP over HTTP, command router
   Commands/             The commands, grouped by subject
   Clients/              Registering this server with AI clients
   UI/                   Ribbon buttons
   Config.daml           Ribbon definition and version
 src/arcgis_pro_mcp/     The Python MCP server (stdio)
-  catalog.py            All 112 tool definitions -- the single source of truth
+  catalog.py            All 114 tool definitions -- the single source of truth
 arcgis_pro_plugin/      The in-Pro Python bridge, for execute_arcpy_code
 scripts/                Build, sign, install, icons, code generation
 tests/                  client-registration (C#), catalog drift (Python)

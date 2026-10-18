@@ -12,6 +12,30 @@ identified there by the first 8 hex digits of the add-in's SHA-256: `c0a91663`
 save_edits fixes) and `81bfbdcb` (sys.executable fix). All three still reported
 version 1.1.1.
 
+### Added
+
+- **`xy_table_to_point`** makes points from a table or CSV with coordinate
+  columns, and **`tabulate_area`** returns the area of each class of a
+  categorical raster inside each zone. Agents limited to the named tools could
+  do neither in the paper's pilot. The catalogue now has 114 tools.
+- **`execute_arcpy_code` stops runaway code** after `timeout_seconds` (default
+  600). The code runs on Pro's Main CIM Thread, where code that never ends
+  freezes Pro. A call blocked inside a tool or another process stops when it
+  returns.
+
+### Changed
+
+- **Edits switch editing on when the project requires it.** With "Enable and
+  disable editing from the Edit tab" set in Pro's options, `insert_features`,
+  `update_features` and `delete_features` failed with "Editing in the
+  application is not enabled", and no tool could switch it on.
+- **`get_layout_info` returns the text of text elements**, so an agent can check
+  the title it added.
+- **`calculate_field` names the qualified fields when a join is the problem.**
+  After a join, fields must be written with their table
+  (`!cm_districts.area_sqkm!`); an agent that wrote `!area_sqkm!` got a syntax
+  error about an empty value and concluded the data was empty.
+
 ### Fixed
 
 - **Code that ran `sys.executable` started a second ArcGIS Pro and froze the
