@@ -195,6 +195,43 @@ client, so upgrading the add-in upgrades it too.
 The bridge lives inside ArcGIS Pro, so **Pro has to be open**. Close it and the
 client's connection goes red.
 
+### Local or self-hosted models (Ollama, vLLM)
+
+There is no Ollama or vLLM button, and none is needed. They serve a **model**;
+the add-in talks to an **MCP client**, and the client calls the model:
+
+```
+ArcGIS Pro (add-in)  ⇄  MCP  ⇄  MCP client  ⇄  model API: Ollama, vLLM, or a cloud provider
+```
+
+So register a client once with its ribbon button, then point that client at
+your model.
+
+- **Ollama, with Codex.** Click **Codex** on the ribbon, then start Codex
+  against the local Ollama:
+
+  ```powershell
+  codex --oss --local-provider ollama -m qwen3.5:9b
+  ```
+
+- **vLLM, or any server with an OpenAI-compatible API.** Use a client that
+  lets you set the model's base URL — Codex with a custom model provider, or
+  Cline or VS Code from **More clients** — and give it `http://<host>:8000/v1`.
+  Start vLLM with tool calling on (`--enable-auto-tool-choice` and the
+  `--tool-call-parser` its model card names).
+
+Two things decide whether a local model works:
+
+- **It must call tools.** Pick a model whose card lists tool calling;
+  a base (non-instruct) model cannot.
+- **It needs room for the tools.** The definitions of the named tools take
+  about 24,000 tokens, sent with every call, so give the model a context of
+  64,000 tokens or more. A larger context than the GPU can hold spills onto
+  the CPU (minutes per answer on a 12 GB card); with Ollama, set
+  `PARAMETER num_ctx 65536` in a Modelfile. Tell the client the same window —
+  for Codex, `-c model_context_window=65536` — or it will not compact a long
+  conversation, and the server will silently drop its oldest turns.
+
 ---
 
 ## The ribbon
