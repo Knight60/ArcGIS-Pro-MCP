@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "ArcGIS Pro MCP"
+abstract: >-
+  An ArcGIS Pro add-in that runs a Model Context Protocol (MCP) server inside the
+  application, so that any MCP-compatible AI client can work on the open project
+  through named tools, geoprocessing tools by name, or ArcPy code run in process.
+authors:
+  - family-names: Nakmuenwai
+    given-names: Pisut
+    affiliation: Mahidol University
+    orcid: "https://orcid.org/0009-0007-5359-2838"
+version: 1.2.0
+date-released: 2026-11-21
+doi: 10.5281/zenodo.24150210
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24150210
+    description: "Version 1.2.0"
+  - type: doi
+    value: 10.5281/zenodo.24150209
+    description: "All versions"
+repository-code: "https://github.com/Knight60/ArcGIS-Pro-MCP"
+license: AGPL-3.0-or-later
+keywords:
+  - ArcGIS Pro
+  - Model Context Protocol
+  - GIS
+  - AI agents
+  - add-in
