@@ -4,20 +4,21 @@ Notable changes, newest first. Versions are the add-in version in
 `addin/ArcGISProMCP/Config.daml`, which is what the ribbon, the installer and
 the MCP handshake all report.
 
-## 1.2.0 — unreleased
+## 1.2.0 — 2026-11-21
 
-Development builds of this version were used for the paper's pilot runs and are
-identified there by the first 8 hex digits of the add-in's SHA-256: `c0a91663`
-(ArcPy through Calculate Value, port 6520 only), `fda07d92` (activate_map and
-save_edits fixes) and `81bfbdcb` (sys.executable fix). All three still reported
-version 1.1.1.
+The released package is build `51ef0458` (SHA-256 of the unsigned package), signed
+with the same certificate as 1.1.1; signing adds only the signature. SHA-256 of
+the signed `ArcGISProMCP.esriAddinX`: `8a59e0b1…dcdc` (full value in
+`dist/build-report.json`). `ArcGIS-MCP-AddIn.cer`, the public certificate, is
+now a release asset, so a machine that requires a trusted publisher can trust
+it without a command line (README, *Add-in security*).
 
 ### Added
 
 - **`xy_table_to_point`** makes points from a table or CSV with coordinate
   columns, and **`tabulate_area`** returns the area of each class of a
   categorical raster inside each zone. Agents limited to the named tools could
-  do neither in the paper's pilot. The catalogue now has 114 tools.
+  do neither before. The catalogue now has 114 tools.
 - **`execute_arcpy_code` stops runaway code** after `timeout_seconds` (default
   600). The code runs on Pro's Main CIM Thread, where code that never ends
   freezes Pro. A call blocked inside a tool or another process stops when it

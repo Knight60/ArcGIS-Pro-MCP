@@ -80,6 +80,57 @@ machines have add-in security turned on, and the add-in alone cannot say so.
 The installer checks, tells you which of the two states it found, and offers
 the fix. Run it a second time and it offers to uninstall.
 
+### Add-in security: two settings work
+
+ArcGIS Pro only loads an add-in that its security setting allows. The setting
+is in **Project ▸ Add-In Manager ▸ Options**:
+
+![ArcGIS Pro Add-In Manager, Options tab, showing the three add-in security settings](docs/images/add-in-manager.png)
+
+This add-in loads under either of the last two. Pick one:
+
+```mermaid
+flowchart TD
+    start(["MCP tab missing after restarting Pro?"]) --> opt{"Add-In Manager ▸ Options"}
+    opt -- "Load only Esri provided Add-Ins" --> esri["No third-party add-in loads.<br/>Ask your administrator."]
+    opt -- "Require … trusted publisher" --> a["A: trust ArcGIS-MCP-AddIn.cer once<br/>(steps below), restart Pro"]
+    opt -- "Load all Add-Ins without restrictions" --> b["B: nothing to do.<br/>Restart Pro."]
+    a --> ok(["MCP tab appears"])
+    b --> ok
+```
+
+**A. Require Add-Ins to be digitally signed by a trusted publisher** (the
+middle one; recommended). The add-in is signed, and you tell Windows once to
+trust the certificate it was signed with. Nothing to type:
+
+1. Download
+   **[`ArcGIS-MCP-AddIn.cer`](https://github.com/Knight60/ArcGIS-Pro-MCP/releases/latest/download/ArcGIS-MCP-AddIn.cer)**
+   from the release. It is the public certificate only; its SHA-1 thumbprint is
+   `D7BAEAA95CDD22934649C3051368DD5969003C38`.
+2. Double-click it and choose **Install Certificate…** ▸ **Current User** ▸
+   **Next**.
+3. Choose **Place all certificates in the following store** ▸ **Browse…** ▸
+   **Trusted Root Certification Authorities**, then **Next** ▸ **Finish**.
+   Not *Automatically select*: that puts it where ArcGIS Pro does not look.
+4. Windows asks you to confirm. Check that the thumbprint matches and choose
+   **Yes**.
+5. In ArcGIS Pro, choose the middle setting, then close and reopen Pro.
+   **Add-In Manager ▸ Add-Ins** now shows *Digital Signature: Authenticated*
+   for ArcGIS Pro MCP.
+
+Pro will then load add-ins signed with this certificate, and only those, for
+your Windows user. If you did this for 1.1.1, it is already done: 1.2.0 is
+signed with the same certificate. To undo it, run `certmgr.msc` and delete
+*ArcGIS MCP Add-In* from **Trusted Root Certification Authorities**.
+
+**B. Load all Add-Ins without restrictions** (the bottom one). Nothing to
+trust, and nothing is checked either: Pro loads any add-in, from anyone. Choose
+it, then close and reopen Pro.
+
+The top setting, *Load only Esri provided Add-Ins*, loads no add-in but Esri's.
+If your organisation has set it, ask your administrator. More on what each
+setting means: [Signing the add-in](docs/addin.md#signing-the-add-in).
+
 Requires ArcGIS Pro 3.7. Nothing else — no Python, no SDK, no admin rights.
 It is built against 3.7 and will not load on anything older; a newer Pro should
 be fine, and the installer says so rather than stopping you.
@@ -435,15 +486,12 @@ connected, and the last error.
 
 ## Troubleshooting
 
-**No MCP tab after restarting Pro.** Add-in security is the usual cause.
-Run `Install-ArcGISProMCP.cmd`; it will say so and offer the two ways round it.
-The setting itself is in ArcGIS Pro under **Project ▸ Add-In Manager ▸
-Options**:
-
-![ArcGIS Pro Add-In Manager, Options tab, showing the three add-in security settings](docs/images/add-in-manager.png)
-
-The middle setting is the one this add-in is signed for. The bottom one loads
-anything. [What each choice means](docs/addin.md#signing-the-add-in).
+**No MCP tab after restarting Pro.** Add-in security is the usual cause. If
+**Project ▸ Add-In Manager ▸ Options** is on the middle setting and the
+add-in's *Digital Signature* reads *Untrusted*, the certificate is not trusted
+yet. Follow
+[Add-in security: two settings work](#add-in-security-two-settings-work).
+`Install-ArcGISProMCP.cmd -CheckOnly` also tells you which state it found.
 
 **The client shows the server in red.** ArcGIS Pro is closed, or the bridge is
 stopped. Open Pro and check the toggle on the MCP tab shows ⏹ (running).
@@ -474,13 +522,14 @@ assistant confirm before bulk edits.
 
 An ArcGIS Pro add-in written in C#, running inside Pro's own process:
 
-```text
-AI client ──MCP over HTTP :6520/mcp ──┐
-                                      ▼
-              ┌─ C# add-in (inside the ArcGIS Pro process) ──────────┐
-              │   → QueuedTask.Run (Main CIM Thread)                 │
-              │   execute_arcpy_code → Calculate Value → arcpy       │
-              └──────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    client["AI client"] -- "MCP over HTTP<br/>127.0.0.1:6520/mcp" --> addin
+    subgraph pro["ArcGIS Pro process"]
+        addin["C# add-in"] --> qt["QueuedTask.Run<br/>(Main CIM Thread)"]
+        qt --> project[("Open project")]
+        addin -- "execute_arcpy_code" --> cv["ModelBuilder tool<br/>Calculate Value"] --> arcpy["ArcPy"] --> project
+    end
 ```
 
 Being in-process is the whole point. ArcGIS Pro will only let its own Main CIM

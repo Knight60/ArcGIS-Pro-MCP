@@ -1,4 +1,29 @@
-# Codex HTTP and Pro 3.4/3.7 release validation
+# Release validation
+
+## 1.2.0 (2026-11-20)
+
+Status: **validated on Pro 3.7.1 and published to `dist`.** Not certified for
+any other Pro version.
+
+The package is build `51ef0458` (unsigned candidate, built 2026-10-18), signed
+afterwards with the 1.1.1 certificate (`CN=ArcGIS MCP Add-In`, thumbprint
+`D7BAEAA95CDD22934649C3051368DD5969003C38`, valid to 2031-08-29). No rebuild:
+the add-in that was tested is the add-in that ships.
+
+| Check | Result |
+|---|---|
+| Signed package against the unsigned candidate | Every entry of the candidate (including `Install/ArcGISProMCP.dll` and `Config.daml`) identical byte for byte; signing added only the signature parts, `[Content_Types].xml` and `_rels/.rels` |
+| Installer | Candidate installer with the signed package as payload; differs from the candidate only in the payload and "signed" in its header; parses; payload hash equals the package |
+| `tests/installer/test-installer.ps1` on the signed package | Passed |
+| `-CheckOnly` | Reports 1.2.0 and "Signed by CN=ArcGIS MCP Add-In, expires 2031-08-29" |
+| Security 0 (load all add-ins) | Installed with `-Reinstall`; Add-In Manager shows 1.2.0, *Untrusted*; initialize 1.2.0.0, ping, tools/list (114 tools) passed |
+| Security 1 before trusting the certificate | Add-in not loaded, as expected |
+| Security 1 after trusting the `.cer` by double-click (Current User, Trusted Root) | Add-In Manager shows *Authenticated*; `scripts/test_http.py --expected-version 1.2.0.0` passed (initialize, notification, ping, 114 tools, get_project_info) |
+| `execute_arcpy_code` in process | Returned `Pro 3.7.1, maps: 1`; a second call read the variable set by the first (first call 17 s while ArcPy started, then 0.09 s) |
+
+---
+
+# 1.1.1: Codex HTTP and Pro 3.4/3.7 release validation
 
 Status on 2026-09-06: **validated on Pro 3.7 and published to `dist`. Not
 certified for any other Pro version** -- do not publish as dual-version support.

@@ -115,8 +115,8 @@ dotnet run --project tests\http-transport -f net8.0
 dotnet run --project tests\http-transport -f net10.0
 python -m pytest tests\                           # catalog drift, mock end-to-end
 python tests\test_end_to_end_mock.py              # explicit script entry point
-python scripts\test_http.py --expected-version 1.1.1.0         # installed candidate only
-python scripts\test_stdio_bridge.py --expected-version 1.1.1.0  # the launched-client path
+python scripts\test_http.py --expected-version 1.2.0.0         # installed candidate only
+python scripts\test_stdio_bridge.py --expected-version 1.2.0.0  # the launched-client path
 ```
 
 `client-registration` exercises the AI-client config writing against **copies**
@@ -185,14 +185,15 @@ files from `artifacts\candidates\pro-<version>` to `dist` only after recording
 runtime results and checksums. Copy `build-report.json` across with them: it
 records the version, reference assembly versions and the SHA-256 of both files,
 so what is published can be told apart from a later rebuild of the same source.
-`dist` currently holds the validated, signed 1.1.1 build.
+`dist` currently holds the validated, signed 1.2.0 build.
 
 ```powershell
 .\scripts\build.ps1 -Sign
-gh release create v1.1.1 `
+gh release create v1.2.0 `
     dist\ArcGISProMCP.esriAddinX `
     dist\Install-ArcGISProMCP.cmd `
-    --title "v1.1.1" --notes-file NOTES.md
+    dist\ArcGIS-MCP-AddIn.cer `
+    --title "v1.2.0" --notes-file NOTES.md
 ```
 
 **CI cannot build this.** GitHub Actions has no ArcGIS Pro to reference, so
@@ -212,7 +213,7 @@ places claiming to be the current build while disagreeing is the state worth
 avoiding; replacing the assets takes a moment and settles it:
 
 ```powershell
-gh release upload v1.1.1 dist\ArcGISProMCP.esriAddinX dist\Install-ArcGISProMCP.cmd --clobber
+gh release upload v1.2.0 dist\ArcGISProMCP.esriAddinX dist\Install-ArcGISProMCP.cmd --clobber
 ```
 
 Set `version` in `addin/ArcGISProMCP/Config.daml` first. It appears in the

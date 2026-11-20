@@ -134,9 +134,9 @@ Two costs come with it:
   reason the add-in exists.
 
 In practice the third layer is simply absent for anyone who installed only the
-`.esriAddinX`. In the benchmark pilot of 2026-10-16, 11 of 20 agent episodes
-tried `execute_arcpy_code`, got the "not listening on 127.0.0.1:6511" error (the port used up to 1.1.1),
-and fell back to the named tools; 19 of 20 still succeeded.
+`.esriAddinX`. Agents that tried `execute_arcpy_code` got the "not listening on
+127.0.0.1:6511" error (the port used up to 1.1.1) and fell back to the named
+tools.
 
 ### Calculate Value runs Python in process, without the pump
 
